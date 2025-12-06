@@ -52,3 +52,19 @@ analysis:
   run_citation_validator: true
   run_grade_assessment: true
   run_gap_identifier: true
+
+prompts:
+  screening: "literature_autopilot/prompts/screening_prompt.md"
+  prescreening: "literature_autopilot/prompts/prescreening_prompt.md"
+  extraction: "literature_autopilot/prompts/extraction_prompt.md"
+
+paper_structure:
+  sections:
+    - "Abstract"
+    - "1. Introduction"
+    - "2. Methodology"
+    - "3.1 Analysis: Self-Referential Prompting"
+    - "3.2 Analysis: Reflective Evaluation"
+    - "3.3 Analysis: Iterative Self-Correction / Debate"
+    - "4. Discussion"
+    - "5. Conclusion"

@@ -102,7 +102,12 @@ class SLRPipeline:
 
     def step_screen(self):
         print("\n--- Phase 3: Screening ---")
-        screener = PaperScreener(provider=self.config["screening"]["provider"], model=self.config["screening"]["model"])
+        prompt_path = self.config.get("prompts", {}).get("screening")
+        screener = PaperScreener(
+            provider=self.config["screening"]["provider"], 
+            model=self.config["screening"]["model"],
+            prompt_path=prompt_path
+        )
         # Load existing if available
         if os.path.exists("slr_results_enriched.csv") and not self.unique_papers:
              self.unique_papers = load_papers_from_csv("slr_results_enriched.csv")
@@ -133,7 +138,14 @@ class SLRPipeline:
 
     def step_extract_data(self):
         print("\n--- Phase 5: Extraction ---")
-        extractor = SLRExtractor(model_name=self.config["extraction"]["model"])
+        prescreen_path = self.config.get("prompts", {}).get("prescreening")
+        extract_path = self.config.get("prompts", {}).get("extraction")
+        
+        extractor = SLRExtractor(
+            model_name=self.config["extraction"]["model"],
+            prescreening_prompt_path=prescreen_path,
+            extraction_prompt_path=extract_path
+        )
         self.extracted_data = []
         for paper in self.final_papers:
             if hasattr(paper, 'pdf_path') and paper.pdf_path:
@@ -203,13 +215,10 @@ class SLRPipeline:
         self.paper_structure = writer.generate_structure(self.extracted_data)
         
         # Write Sections with Deep Integration
-        sections = [
+        sections = self.config.get("paper_structure", {}).get("sections", [
             "Abstract", "1. Introduction", "2. Methodology", 
-            "3.1 Analysis: Self-Referential Prompting", 
-            "3.2 Analysis: Reflective Evaluation", 
-            "3.3 Analysis: Iterative Self-Correction / Debate", 
-            "4. Discussion", "5. Conclusion"
-        ]
+            "3. Results", "4. Discussion", "5. Conclusion"
+        ])
         
         full_paper = ""
         previous_summary = ""

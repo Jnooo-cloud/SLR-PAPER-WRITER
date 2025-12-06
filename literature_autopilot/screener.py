@@ -178,11 +178,17 @@ This question has TWO components that BOTH must be addressed:
 """
 
 class PaperScreener:
-    def __init__(self, provider: str = "openai", model: str = "gpt-4o"):
+    def __init__(self, provider: str = "openai", model: str = "gpt-4o", prompt_path: str = None):
         self.provider = provider
         self.model_name = model
+        self.prompt = SCREENING_PROMPT_COT # Default fallback
+        
+        if prompt_path and os.path.exists(prompt_path):
+            with open(prompt_path, "r") as f:
+                self.prompt = f.read()
         
         if self.provider == "openai":
+            from openai import OpenAI
             self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
             self.model = RotatableModel(self.model_name)
             
