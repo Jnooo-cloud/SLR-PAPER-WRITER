@@ -116,6 +116,21 @@ class SLRExtractor:
         - MEDIUM: Mix of HIGH and MEDIUM scores
         - LOW: Multiple LOW scores
 
+        **Q5 (Novelty & Contribution)**: Is the method genuinely novel?
+        - Score: HIGH = Clear novel mechanism or significant improvement over prior work
+        - Score: MEDIUM = Incremental improvement or combination of existing techniques
+        - Score: LOW = Mostly replicates existing work with minor changes
+
+        **Q6 (Generalization & Limitations)**: How well does it generalize?
+        - Generalization: Does it work across different LLMs? Different domains?
+        - Limitations: What are the failure cases? Computational costs?
+        - Scalability: Does performance degrade with larger models or longer sequences?
+
+        **Q7 (Reproducibility)**: Can it be reproduced?
+        - Code availability: Is code released?
+        - Hyperparameter clarity: Are all hyperparameters specified?
+        - Random seed control: Are seeds fixed for reproducibility?
+
         ---
 
         ### SECTION 2: METHODOLOGICAL DIFFERENCES EXTRACTION

@@ -1,69 +1,42 @@
 import requests
 import time
-from typing import List
+from typing import List, Set
 from search_modules import SemanticScholarSearch, Paper
 
-class Snowballing:
-    def __init__(self, search_engine: SemanticScholarSearch):
-        self.engine = search_engine
-
-    def forward_snowballing(self, seed_papers: List[Paper]) -> List[Paper]:
-        """Get papers that cite the seed papers."""
-        print("Starting Forward Snowballing...")
-        citations = []
-        for paper in seed_papers:
-            # We need a paper ID (DOI or S2ID) to get citations
-            paper_id = paper.doi
-            if not paper_id:
-                # Try to find the paper first to get an ID
-                results = self.engine.search_keyword(paper.title, limit=1)
-                if results:
-                    paper_id = results[0].doi # Or S2ID if we stored it
-                    # If we still don't have an ID, skip
-                    if not paper_id: 
-                         # Fallback: search by title and take the first result's ID if available
-                         # For now, let's assume we can get it via search
-                         pass
-
-            if paper_id:
-                details = self.engine.get_paper_details(paper_id)
-                if details and hasattr(details, 'citations_list'): 
-                    # Note: get_paper_details in search_modules needs to return the list of citing papers
-                    # The current implementation of get_paper_details returns a Paper object, 
-                    # but we might need to adjust it to return raw data or include the list in Paper object.
-                    # Let's adjust this logic to be robust.
-                    pass
-        
-        # Since the current SearchModule returns a Paper object which doesn't hold the full list of citations objects,
-        # We need to extend the SemanticScholarSearch to specifically fetch citations.
-        return citations
-
-    def backward_snowballing(self, seed_papers: List[Paper]) -> List[Paper]:
-        """Get papers referenced by the seed papers."""
-        print("Starting Backward Snowballing...")
-        references = []
-        # Similar logic to forward, need to fetch references.
-        return references
-
-# Redefining Snowballing to use a more direct approach with the API
 class Snowballer:
     def __init__(self, api_key: str = None):
         self.base_url = "https://api.semanticscholar.org/graph/v1"
         self.headers = {"x-api-key": api_key} if api_key else {}
+        self.visited_papers: Set[str] = set() # For cycle detection
 
     def get_citations(self, paper_id: str, max_results: int = 50) -> List[Paper]:
         """Get papers citing the given paper ID."""
+        # Cycle detection check
+        if paper_id in self.visited_papers:
+            print(f"    Skipping cycle: {paper_id} already visited.")
+            return []
+        self.visited_papers.add(paper_id)
+
         url = f"{self.base_url}/paper/{paper_id}/citations"
-        params = {"fields": "title,authors,year,abstract,url,externalIds,citationCount"}
-        return self._fetch_connected_papers(url, params, max_results)
+        params = {"fields": "title,authors,year,abstract,url,externalIds,citationCount,venue"}
+        return self._fetch_connected_papers(url, params, max_results, connection_type="citingPaper")
 
     def get_references(self, paper_id: str, max_results: int = 50) -> List[Paper]:
         """Get papers referenced by the given paper ID."""
-        url = f"{self.base_url}/paper/{paper_id}/references"
-        params = {"fields": "title,authors,year,abstract,url,externalIds,citationCount"}
-        return self._fetch_connected_papers(url, params, max_results)
+        # Cycle detection check
+        if paper_id in self.visited_papers:
+             # Note: We might want to allow visiting the same paper for references if we are doing multi-hop,
+             # but for single-hop snowballing, tracking visited is fine.
+             # If we do recursive snowballing, we need to be careful.
+             # For now, let's just track what we've expanded.
+             pass
+        self.visited_papers.add(paper_id)
 
-    def _fetch_connected_papers(self, url: str, params: dict, max_results: int) -> List[Paper]:
+        url = f"{self.base_url}/paper/{paper_id}/references"
+        params = {"fields": "title,authors,year,abstract,url,externalIds,citationCount,venue"}
+        return self._fetch_connected_papers(url, params, max_results, connection_type="citedPaper")
+
+    def _fetch_connected_papers(self, url: str, params: dict, max_results: int, connection_type: str) -> List[Paper]:
         papers = []
         offset = 0
         limit = 100 # Max limit for S2 API
@@ -73,7 +46,7 @@ class Snowballer:
             params["offset"] = offset
             try:
                 print(f"    Fetching batch (offset={offset})...")
-                response = requests.get(url, headers=self.headers, params=params)
+                response = requests.get(url, headers=self.headers, params=params, timeout=10)
                 
                 if response.status_code == 429:
                     print("    Rate limit hit. Waiting 5 seconds...")
@@ -93,10 +66,14 @@ class Snowballer:
                 for item in batch_data:
                     if len(papers) >= max_results:
                         break
+                    
                     # The citing/referenced paper is inside 'citingPaper' or 'citedPaper'
-                    paper_data = item.get("citingPaper") or item.get("citedPaper")
+                    # Some entries might be None if the paper is not indexed well
+                    paper_data = item.get(connection_type)
                     if paper_data:
-                        papers.append(self._parse_paper_data(paper_data))
+                        paper_obj = self._parse_paper_data(paper_data)
+                        if paper_obj:
+                             papers.append(paper_obj)
                 
                 # Check if we reached the end
                 if len(batch_data) < limit:
@@ -109,12 +86,23 @@ class Snowballer:
                 print(f"Error in snowballing: {e}")
                 break
                 
-        return papers
+        return self._deduplicate_papers(papers)
+
+    def _deduplicate_papers(self, papers: List[Paper]) -> List[Paper]:
+        """Deduplicate papers based on DOI or Title."""
+        unique_papers = {}
+        for p in papers:
+            # Prefer DOI as key, fallback to Title
+            key = p.doi if p.doi else p.title.lower().strip()
+            if key not in unique_papers:
+                unique_papers[key] = p
+        return list(unique_papers.values())
 
     def _parse_paper_data(self, item: dict) -> Paper:
         # Helper to convert raw dict to Paper object
-        # This duplicates logic from search_modules, ideally should be shared.
-        # For now, quick implementation.
+        if not item.get("title"):
+            return None
+            
         authors = [a["name"] for a in item.get("authors", [])] if item.get("authors") else []
         external_ids = item.get("externalIds", {})
         doi = external_ids.get("DOI")
@@ -129,5 +117,3 @@ class Snowballer:
             doi=doi,
             source="Semantic Scholar (Snowball)"
         )
-
-import requests

@@ -7,6 +7,31 @@ from search_modules import Paper
 from llm_utils import RotatableModel
 
 # Chain-of-Thought Prompt for higher accuracy
+SCREENING_EXAMPLES = """
+### EXAMPLES OF INCLUSION vs. EXCLUSION:
+
+**EXAMPLE 1: INCLUDE**
+- Title: "Self-Refine: Iterative Refinement with Self-Feedback"
+- Abstract mentions: "model generates feedback to refine its own responses iteratively"
+- Decision: INCLUDE (Reflective Evaluation with explicit feedback loop)
+
+**EXAMPLE 2: EXCLUDE**
+- Title: "Prompt Engineering for Better LLM Performance"
+- Abstract mentions: "optimized prompts for better performance"
+- Decision: EXCLUDE (No feedback loop, one-shot optimization)
+
+**EXAMPLE 3: INCLUDE**
+- Title: "Multi-Agent Debate for Code Generation"
+- Abstract mentions: "multiple agents debate and converge on a solution"
+- Decision: INCLUDE (ISCD with multiple iterations)
+
+**EXAMPLE 4: EXCLUDE**
+- Title: "Fine-tuning LLMs with RLHF"
+- Abstract mentions: "human feedback to improve model weights"
+- Decision: EXCLUDE (RLHF requires human-in-the-loop, not autonomous self-improvement)
+"""
+
+# Chain-of-Thought Prompt for higher accuracy
 SCREENING_PROMPT_COT = """
 You are an expert research assistant conducting a rigorous Systematic Literature Review (SLR) 
 on "LLM Self-Improvement" following PRISMA 2020 standards.
@@ -57,6 +82,10 @@ This question has TWO components that BOTH must be addressed:
 - Metrics: Elo-Rating, Performance Gap Recovered (PGR), Win Rate
 - Qualitative improvements MUST be explicitly measured with metrics
 - Exclude: Only qualitative claims without numbers
+
+---
+
+""" + SCREENING_EXAMPLES + """
 
 ---
 
