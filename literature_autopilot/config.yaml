@@ -1,0 +1,54 @@
+slr_topic: "LLM Self-Improvement"
+
+search:
+  keywords:
+    - "Self-Referential Prompting"
+    - "Reflective Evaluation"
+    - "Iterative Self-Correction"
+    - "LLM Debate"
+    - "Self-Improvement LLM"
+  seed_urls:
+    - "https://evjang.com/2023/03/26/self-reflection.html"
+    - "https://aclanthology.org/2024.naacl-long.15/"
+    - "https://composable-models.github.io/llm_debate/"
+    - "https://arxiv.org/abs/2402.06782"
+  seed_titles:
+    - "Self-Correction in Large Language Models"
+    - "Self-Refine: Iterative Refinement with Self-Feedback"
+    - "Improving Factuality and Reasoning in Language Models through Multiagent Debate"
+    - "Self-Discover: Large Language Models Self-Compose Reasoning Structures"
+  max_search_results: 20
+
+snowballing:
+  enabled: true
+  depth: 1
+  max_results: 50
+
+screening:
+  provider: "openai" # or "gemini"
+  model: "gpt-4o"
+
+extraction:
+  model: "gemini-1.5-pro-latest"
+
+writing:
+  model: "gemini-1.5-pro-latest"
+
+review:
+  enabled: true
+  quality_threshold: 90
+  max_iterations: 5
+  focus_areas:
+    - "PRISMA 2020 Compliance"
+    - "Depth of Analysis (methodological differences)"
+    - "Quantification of Improvements"
+    - "Critical Discussion"
+    - "Academic Writing Quality"
+    - "Certainty of Evidence (GRADE)"
+    - "Literature Gaps"
+
+analysis:
+  run_visualizer: true
+  run_citation_validator: true
+  run_grade_assessment: true
+  run_gap_identifier: true

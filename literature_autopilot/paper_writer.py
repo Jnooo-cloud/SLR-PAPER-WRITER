@@ -3,8 +3,8 @@ import json
 import google.generativeai as genai
 import requests
 from typing import List, Dict
-from reviewer import MultiAgentReviewer
-from llm_utils import RotatableModel
+from literature_autopilot.reviewer import MultiAgentReviewer
+from literature_autopilot.llm_utils import RotatableModel
 
 class PaperWriter:
     STYLE_GUIDELINES = """

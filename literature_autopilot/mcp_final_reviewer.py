@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Dict, Tuple
-from llm_utils import RotatableModel
+from literature_autopilot.llm_utils import RotatableModel
 
 class MCPFinalReviewer:
     """

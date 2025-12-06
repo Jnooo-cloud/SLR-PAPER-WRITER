@@ -2,7 +2,7 @@ import os
 import json
 import google.generativeai as genai
 from typing import Dict, List
-from llm_utils import RotatableModel
+from literature_autopilot.llm_utils import RotatableModel
 
 class MultiAgentReviewer:
     MAX_ROUNDS = 2 # Increased for quality

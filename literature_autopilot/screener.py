@@ -3,8 +3,8 @@ import json
 import time
 from typing import Dict, Optional
 import google.generativeai as genai
-from search_modules import Paper
-from llm_utils import RotatableModel
+from literature_autopilot.search_modules import Paper
+from literature_autopilot.llm_utils import RotatableModel
 
 # Chain-of-Thought Prompt for higher accuracy
 SCREENING_EXAMPLES = """

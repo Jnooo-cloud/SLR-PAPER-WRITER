@@ -3,7 +3,7 @@ import json
 import time
 import google.generativeai as genai
 from typing import Dict, Optional
-from llm_utils import RotatableModel
+from literature_autopilot.llm_utils import RotatableModel
 
 class SLRExtractor:
     def __init__(self, model_name: str = "gemini-1.5-pro-latest"):

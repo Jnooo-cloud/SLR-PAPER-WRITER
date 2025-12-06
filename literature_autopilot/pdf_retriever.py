@@ -2,7 +2,7 @@ import os
 import time
 import requests
 import arxiv
-from search_modules import Paper
+from literature_autopilot.search_modules import Paper
 
 class PDFRetriever:
     def __init__(self, download_dir: str = "pdfs"):

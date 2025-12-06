@@ -1,7 +1,7 @@
 import requests
 import time
 from typing import List, Set
-from search_modules import SemanticScholarSearch, Paper
+from literature_autopilot.search_modules import SemanticScholarSearch, Paper
 
 class Snowballer:
     def __init__(self, api_key: str = None):

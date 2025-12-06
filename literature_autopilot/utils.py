@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import List
-from search_modules import Paper
+from literature_autopilot.search_modules import Paper
 
 def deduplicate_papers(papers: List[Paper]) -> List[Paper]:
     """Deduplicate papers based on DOI (if available) or Title (normalized)."""
