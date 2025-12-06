@@ -8,110 +8,144 @@ from llm_utils import RotatableModel
 
 # Chain-of-Thought Prompt for higher accuracy
 SCREENING_PROMPT_COT = """
-You are an expert research assistant conducting a Systematic Literature Review (SLR) on the topic: "LLM Self-Improvement".
-Your goal is to screen the following paper with HIGH ACCURACY based on the defined review protocol.
+You are an expert research assistant conducting a rigorous Systematic Literature Review (SLR) 
+on "LLM Self-Improvement" following PRISMA 2020 standards.
 
-### Research Question (RQ) & PICO Criteria:
-The paper must address the core of the RQ: "Welche methodischen Unterschiede bestehen zwischen den aktuellen Ansätzen und welche Verbesserungen können jeweils erzielt werden?"
+**CRITICAL RESEARCH QUESTION**: 
+"Welche methodischen Unterschiede bestehen zwischen den aktuellen Ansätzen und welche 
+Verbesserungen können jeweils erzielt werden?"
 
-| Element | Description (LLM Self-Improvement) | Key Indicators (MUST be present) |
-| :--- | :--- | :--- |
-| **P (Population)** | Large Language Models (LLMs). | LLM, Large Language Model, GPT, Llama, Mistral, etc. |
-| **I (Intervention)** | Self-Improvement Mechanisms with explicit feedback loops. | Must fit ONE of: 1) Self-Referential Prompting (e.g., prompt optimization, prompt generation by model), 2) Reflective Evaluation (e.g., self-critique, self-feedback, reflection prompts), 3) Iterative Self-Correction/Debate (e.g., LLM Debates, Solo Performance Prompting, Self-Refine, multi-agent dialogue). **CRITICAL: Must describe an explicit self-improvement LOOP/CYCLE where model output feeds back as input for refinement. General prompt engineering or one-shot optimization does NOT qualify.** |
-| **C (Comparison)** | Methodological Differences & Baselines. | MUST compare against at least ONE baseline WITHOUT the specific self-improvement mechanism: Single Agent, Zero-shot, Few-shot, or Chain-of-Thought (CoT) without the self-improvement loop. Comparing only different self-improvement methods against each other is INSUFFICIENT. |
-| **O (Outcomes)** | Improvements (Verbesserungen). | Quantitative metrics: Accuracy, Factuality, Reasoning Quality, Hallucination Reduction, Persuasiveness (e.g., Elo-Rating), or Performance Gap Recovered (PGR). Qualitative improvements must be explicitly measured, not just claimed. |
+This question has TWO components that BOTH must be addressed:
+1. METHODISCHE UNTERSCHIEDE: Different approaches/mechanisms
+2. VERBESSERUNGEN: Quantifiable improvements achieved
 
-### Inclusion Criteria (ALL must be met):
-1.  **Primary Study & Peer-Reviewed Focus**: The paper is a primary study (proposing or empirically evaluating a method) and not a secondary source (survey, review, position paper, vision paper).
-2.  **Intervention Focus (I)**: The paper explicitly investigates ONE of the defined Self-Improvement mechanisms with an explicit feedback/refinement loop for LLMs.
-3.  **Empirical Evidence (O)**: The paper provides quantitative, empirical results (tables, charts, metrics) that measure the Outcome and compare the Intervention against a non-self-improvement baseline.
-4.  **Quality Standards (Preliminary)**: 
-    - VALIDATION: Method tested on at least 2 different datasets/tasks OR multiple LLM models
-    - TRANSPARENCY: Key parameters clearly specified (e.g., debate rounds, agent types, temperature, model names)
-    - BIAS MITIGATION: For debate/multi-agent studies, measures taken against judge biases (e.g., answer swapping, word limits)
+---
 
-### Exclusion Criteria (ANY one excludes the paper):
-1.  **Irrelevant Topic**: Focuses on general LLM training, fine-tuning, or RLHF *without* explicit self-correction/reflection loop. Also excludes non-LLM AI, psychology studies, or significantly different domains (e.g., pure machine translation, image captioning).
-2.  **Lack of Detail/Quality**: Is an extended abstract, short workshop paper, or preprint without detailed experimental results and methodology. OR lacks validation across multiple datasets/tasks/models. OR has severely incomplete methodological reporting (missing key parameters).
-3.  **No Empirical Data**: Purely conceptual papers or proposals without quantitative results.
-4.  **Insufficient Comparison**: Only compares different self-improvement methods against each other without a non-self-improvement baseline. OR compares against weak/non-standard baselines.
-5.  **Language**: Non-English.
+### PICO FRAMEWORK (ALL must be met for INCLUSION):
 
-### Paper Details:
-- **Title**: {title}
-- **Abstract**: {abstract}
+**P (Population)**: Large Language Models (LLMs)
+- Keywords: LLM, Large Language Model, GPT, Llama, Mistral, Claude, PaLM, etc.
+- Exclude: Small language models, non-neural approaches, non-LLM AI systems
 
-### Instructions (Chain-of-Thought):
-Think step-by-step in the "analysis" field. Your reasoning MUST cite specific phrases from the abstract to support your conclusions.
+**I (Intervention)**: Self-Improvement Mechanisms WITH explicit feedback loops
+- Category 1: Self-Referential Prompting (SRP)
+  * Model generates/modifies prompts based on own output
+  * Examples: prompt optimization, self-generated instructions
+  * MUST have: Explicit loop where output feeds back as input
+  
+- Category 2: Reflective Evaluation (RE)
+  * Model critiques/evaluates its own responses
+  * Examples: self-critique, reflection prompts, self-feedback
+  * MUST have: Explicit evaluation mechanism with feedback
+  
+- Category 3: Iterative Self-Correction / Debate (ISCD)
+  * Multi-agent dialogue, debate, or iterative refinement
+  * Examples: LLM debate, multi-agent discussion, consensus-building
+  * MUST have: Multiple iterations where outputs feed back as inputs
 
-**Step 1: Population Check (P)**
-- Does the paper study Large Language Models (LLMs)?
-- Look for explicit mentions: "LLM", "Large Language Model", "GPT", "Llama", "Mistral", etc.
-- If NO: EXCLUDE immediately.
-- If YES: Continue to Step 2.
+**CRITICAL**: Generic prompt engineering WITHOUT a feedback loop = EXCLUDE
+**CRITICAL**: One-shot optimization = EXCLUDE
+**CRITICAL**: RLHF or fine-tuning without explicit self-improvement loop = EXCLUDE
 
-**Step 2: Intervention Check (I) - Critical**
-- Does the paper propose or evaluate ONE of the three self-improvement mechanisms?
-  - Self-Referential Prompting: Model generates/modifies prompts based on its own output
-  - Reflective Evaluation: Model critiques/evaluates its own responses
-  - Iterative Self-Correction/Debate: Multi-agent dialogue, debate, or iterative refinement loops
-- **CRITICAL: Is there an explicit feedback loop where output feeds back as input for refinement?**
-  - Example of VALID loop: "The model generates a response, then critiques it, then refines it based on the critique"
-  - Example of INVALID: "We use prompt engineering to optimize the prompt" (no loop)
-- Cite specific phrases from abstract/intro that describe the mechanism.
-- If NO explicit loop or mechanism: EXCLUDE.
-- If YES: Continue to Step 3.
+**C (Comparison)**: MUST compare against non-self-improvement baseline
+- Acceptable baselines: Zero-shot, Few-shot, Chain-of-Thought (CoT without loop), Single Agent
+- Unacceptable: Only comparing different self-improvement methods against each other
+- Unacceptable: Weak or non-standard baselines (e.g., random baseline only)
 
-**Step 3: Comparison Check (C) - Critical**
-- Does the paper compare the self-improvement method against a non-self-improvement baseline?
-- Acceptable baselines: Single Agent, Zero-shot, Few-shot, CoT (without self-improvement)
-- Check abstract/results for baseline comparisons.
-- If ONLY comparing different self-improvement methods (e.g., Debate vs. Self-Refine) without a non-self-improvement baseline: EXCLUDE.
-- If NO comparison or only weak baselines: EXCLUDE.
-- If YES (valid baseline present): Continue to Step 4.
+**O (Outcomes)**: Quantifiable improvements
+- Metrics: Accuracy, F1-score, BLEU, Factuality, Reasoning Quality, Hallucination Reduction
+- Metrics: Elo-Rating, Performance Gap Recovered (PGR), Win Rate
+- Qualitative improvements MUST be explicitly measured with metrics
+- Exclude: Only qualitative claims without numbers
 
-**Step 4: Empirical Evidence Check (O)**
-- Does the paper provide quantitative results (tables, charts, metrics)?
-- Are outcomes measured in terms of: Accuracy, Factuality, Reasoning, Hallucinations, Persuasiveness, or PGR?
-- Look for specific numbers, percentages, or statistical comparisons.
-- If purely conceptual or qualitative only: EXCLUDE.
-- If YES (quantitative results present): Continue to Step 5.
+---
 
-**Step 5: Quality & Transparency Check**
-- VALIDATION: Is the method tested on at least 2 different datasets/tasks OR multiple LLM models?
-  - If only 1 dataset and 1 model: FLAG as lower confidence or EXCLUDE if combined with other weaknesses.
-- TRANSPARENCY: Are key parameters clearly reported?
-  - For Debate: Number of rounds, agent types, judge selection
-  - For Self-Critique: Critique prompt design, feedback mechanism
-  - For Self-Refine: Refinement strategy, iterations
-  - General: Base LLM models, temperature, sampling, dataset sizes
-  - If severely incomplete: FLAG as lower confidence.
-- BIAS MITIGATION (for multi-agent studies): Are measures taken against judge biases?
-  - If NO measures and multi-agent: FLAG as lower confidence.
-- If multiple quality issues: Consider EXCLUSION.
+### QUALITY THRESHOLDS (for preliminary assessment):
+
+**Validation Rigor**:
+- ✅ HIGH: Tested on 3+ different datasets/tasks AND 2+ different LLM models
+- ⚠️ MEDIUM: Tested on 2 datasets/tasks OR 2 models
+- ❌ LOW: Only 1 dataset/task AND 1 model → FLAG for potential EXCLUSION
+
+**Protocol Transparency**:
+- ✅ HIGH: All parameters explicitly reported (base LLM, temperature, debate rounds, prompt details)
+- ⚠️ MEDIUM: Most parameters reported, some missing
+- ❌ LOW: Severely incomplete reporting → FLAG for potential EXCLUSION
+
+**Bias Mitigation** (for multi-agent studies):
+- ✅ HIGH: Measures taken (answer swapping, word limits, position randomization, multiple judges)
+- ⚠️ MEDIUM: Some measures mentioned
+- ❌ LOW: No bias mitigation measures → FLAG for lower confidence
+
+---
+
+### CHAIN-OF-THOUGHT ANALYSIS (MANDATORY):
+
+**Step 1: Population Check**
+- Explicitly mention: Does the abstract contain LLM-related keywords?
+- Quote specific phrases that confirm LLM focus.
+- Decision: INCLUDE or EXCLUDE
+
+**Step 2: Intervention Check (CRITICAL)**
+- Identify which self-improvement mechanism is addressed: SRP / RE / ISCD
+- Quote the specific mechanism description from the abstract
+- CRITICAL: Is there an explicit feedback loop described?
+  * Look for phrases like: "iterative", "feedback", "refine", "improve", "loop", "dialogue"
+  * Absence of these = likely EXCLUDE
+- Decision: INCLUDE or EXCLUDE
+
+**Step 3: Comparison Check (CRITICAL)**
+- Identify the baseline(s) used for comparison
+- Is it a non-self-improvement baseline? (Zero-shot, CoT, Single Agent, etc.)
+- Quote the comparison statement
+- Decision: INCLUDE or EXCLUDE
+
+**Step 4: Outcomes Check**
+- Identify quantitative metrics reported
+- Are improvements measured in numbers?
+- Quote specific results (e.g., "accuracy improved from 75% to 82%")
+- Decision: INCLUDE or EXCLUDE
+
+**Step 5: Quality Assessment**
+- Validation Rigor: How many datasets/tasks? How many models?
+- Protocol Transparency: Are hyperparameters reported?
+- Bias Mitigation: For multi-agent, are biases addressed?
+- Assign: HIGH / MEDIUM / LOW confidence
 
 **Step 6: Study Type Check**
-- Is this a primary study (proposing/evaluating a method) or secondary (survey, review, position paper)?
-- If secondary: EXCLUDE.
-- If primary: Continue to Step 7.
+- Is this a primary study (proposing/evaluating a method)?
+- Or secondary (survey, review, position paper)?
+- Decision: INCLUDE or EXCLUDE
 
-**Step 7: Language Check**
+**Step 7: Language & Completeness Check**
 - Is the paper in English?
-- If NO: EXCLUDE.
-- If YES: Continue to Step 8.
+- Is it a full paper (not extended abstract)?
+- Decision: INCLUDE or EXCLUDE
 
-**Step 8: Final Decision**
-- Summarize findings from Steps 1-7.
-- Decision: INCLUDE, EXCLUDE, or FLAG (for manual review).
-- Provide confidence level: HIGH, MEDIUM, LOW.
-- Cite key evidence from the paper.
+---
 
-### Output Format:
-Provide your response in valid JSON format with the following keys:
-- "analysis": "Step-by-step reasoning citing specific phrases from the abstract..."
-- "decision": "INCLUDE" or "EXCLUDE"
-- "confidence": A score between 0.0 and 1.0 (Reflects certainty based on abstract detail)
-- "reason": A brief summary of the decision.
+### OUTPUT FORMAT (JSON ONLY):
+
+{
+  "decision": "INCLUDE" or "EXCLUDE",
+  "confidence": 0.95,  // 0.0 to 1.0
+  "mechanism_type": "SRP" or "RE" or "ISCD" or "MULTIPLE",
+  "analysis": {
+    "population_check": "✅ PASS: Paper explicitly studies LLMs (quote: '...')",
+    "intervention_check": "✅ PASS: Addresses SRP with feedback loop (quote: '...')",
+    "comparison_check": "✅ PASS: Compares against CoT baseline (quote: '...')",
+    "outcomes_check": "✅ PASS: Reports accuracy improvement from X% to Y%",
+    "quality_assessment": {
+      "validation_rigor": "HIGH / MEDIUM / LOW",
+      "protocol_transparency": "HIGH / MEDIUM / LOW",
+      "bias_mitigation": "HIGH / MEDIUM / LOW"
+    },
+    "study_type_check": "✅ PASS: Primary study",
+    "language_check": "✅ PASS: English"
+  },
+  "reasoning": "Detailed explanation of decision with specific quotes",
+  "flags": ["Optional: Any concerns or notes"]
+}
 """
 
 class PaperScreener:

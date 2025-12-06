@@ -38,22 +38,98 @@ class MultiAgentReviewer:
             
             # 1. Methodological Hawk
             prompt_hawk = f"""
-            You are a notoriously pedantic academic reviewer.
+            You are a notoriously pedantic academic reviewer for a top-tier venue (NeurIPS, ICLR, ACL).
+            Your role is to ensure METHODOLOGICAL RIGOR and PRISMA COMPLIANCE.
+
+            **SECTION BEING REVIEWED**: {section_name}
+            **PAPER TOPIC**: Systematic Literature Review on "LLM Self-Improvement"
+
+            ---
+
+            ### CRITICAL REVIEW CRITERIA:
+
+            **1. PRISMA 2020 Compliance**
+            - Does the section follow PRISMA 2020 guidelines?
+            - For Methodology section: Are all 27 items addressed?
+            - For Results section: Are findings presented objectively?
+            - For Discussion section: Are limitations discussed?
+            - FLAG any missing elements
+
+            **2. Research Question Alignment**
+            - Does this section address the RQ: "Welche methodischen Unterschiede... und welche Verbesserungen..."?
+            - Are BOTH dimensions (differences AND improvements) covered?
+            - FLAG if either dimension is missing or weak
+
+            **3. Methodological Soundness**
+            - Are inclusion/exclusion criteria clearly stated?
+            - Is the search strategy reproducible?
+            - Is quality assessment using validated tools?
+            - Are data extraction methods systematic?
+            - FLAG any methodological flaws
+
+            **4. Logical Consistency**
+            - Are there logical gaps or fallacies?
+            - Do conclusions follow from evidence?
+            - Are claims appropriately hedged?
+            - FLAG any logical inconsistencies
+
+            **5. Evidence Quality**
+            - Are claims backed by citations?
+            - Are citations to high-quality sources?
+            - Is the evidence sufficient to support claims?
+            - FLAG any unsupported claims
+
+            **6. Quantitative Rigor**
+            - Are numbers and metrics clearly reported?
+            - Are comparisons fair and appropriate?
+            - Are statistical claims well-founded?
+            - FLAG any quantitative errors or misleading statistics
+
+            **7. Plagiarism & Originality**
+            - Is the text original or copied from sources?
+            - Are ideas properly attributed?
+            - FLAG any potential plagiarism
+
+            **8. Reproducibility**
+            - Could another researcher reproduce the methodology?
+            - Are all relevant details provided?
+            - Are search strings, databases, tools specified?
+            - FLAG any missing details that prevent reproducibility
+
+            **9. Critical Analysis**
+            - Does the section go beyond summarization?
+            - Are methodological differences analyzed critically?
+            - Are improvements contextualized?
+            - FLAG if analysis is superficial
+
+            **10. Placeholder Check (FATAL ERROR)**
+            - FLAG ANY use of "N studies", "[Insert X]", "TBD", etc.
+            - These are FATAL errors that must be fixed immediately
+
+            ---
+
+            ### OUTPUT FORMAT:
+
+            Provide a numbered list of CRITICAL issues, organized by severity:
+
+            **FATAL ERRORS** (Must fix immediately):
+            1. [Issue and specific quote from text]
+            2. [Issue and specific quote from text]
+
+            **MAJOR ISSUES** (Significantly impact quality):
+            1. [Issue and specific quote from text]
+            2. [Issue and specific quote from text]
+
+            **MINOR ISSUES** (Polish and refinement):
+            1. [Issue and specific quote from text]
+            2. [Issue and specific quote from text]
+
+            For each issue, provide:
+            - The problem (specific quote if possible)
+            - Why it's a problem
+            - Suggested fix
             
-            {self.STYLE_GUIDELINES}
-
-            **Review Criteria (Focus):**
-            1.  **Methodological Soundness**: Is the approach valid?
-            2.  **Logical Fallacies**: Are there any gaps in the logic?
-            3.  **Quantitative Rigor**: Are statistical claims well-founded?
-            4.  **Plagiarism**: Ensure NO text is copied verbatim.
-            5.  **Reproducibility**: Is the methodology reproducible?
-            6.  **Placeholders**: FLAG ANY "N studies" or "[Insert number]". This is a FATAL ERROR.
-
-            **Section**: {section_name}
             **Draft Text**: {current_draft}
-
-            **Task**: Provide a numbered list of critical, actionable points.
             """
             critique_hawk = self._call_agent(prompt_hawk)
             

@@ -14,3 +14,5 @@ _archive/
 # Virtual Environment
 venv/
 env/
+literature_autopilot/*.txt
+literature_autopilot/*_patch.md

@@ -56,6 +56,7 @@ def main():
     parser.add_argument("--extract-data", action="store_true", help="Run data extraction on PDFs")
     parser.add_argument("--generate-structure", action="store_true", help="Generate paper structure from extracted data")
     parser.add_argument("--write-paper", action="store_true", help="Write the full paper based on structure")
+    parser.add_argument("--final-review", action="store_true", help="Run MCP-based final review and iterative improvement")
     parser.add_argument("--input-file", type=str, default="slr_screening_results.csv", help="Input CSV file")
     args = parser.parse_args()
     
@@ -418,6 +419,47 @@ def main():
             f.write(full_paper)
         
         print("\n✅ Final Paper Generated: final_paper.md")
+
+    if args.final_review:
+        print(f"\n--- Phase 10: Final Review & A+ Optimization (MCP) ---")
+        
+        if not os.path.exists("final_paper.md"):
+            print("Error: final_paper.md not found. Run --write-paper first.")
+            return
+        
+        with open("final_paper.md", "r") as f:
+            paper_text = f.read()
+        
+        # Initialize MCP reviewer
+        from mcp_final_reviewer import MCPFinalReviewer
+        mcp_reviewer = MCPFinalReviewer(model_name=args.model)
+        
+        # Define focus areas for initial review
+        focus_areas = [
+            "PRISMA 2020 Compliance",
+            "Depth of Analysis (methodological differences)",
+            "Quantification of Improvements",
+            "Critical Discussion",
+            "Academic Writing Quality"
+        ]
+        
+        # Run iterative improvement loop
+        improved_paper, final_review = mcp_reviewer.iterative_improvement_loop(
+            paper_text,
+            initial_focus_areas=focus_areas
+        )
+        
+        # Save improved paper
+        with open("final_paper_A_plus.md", "w") as f:
+            f.write(improved_paper)
+        
+        # Save final review
+        with open("final_review.json", "w") as f:
+            json.dump(final_review, f, indent=2)
+        
+        print(f"\n✅ Final paper saved: final_paper_A_plus.md")
+        print(f"✅ Review saved: final_review.json")
+        print(f"\nFinal Quality Score: {final_review.get('overall_quality_score', 'N/A')}/100")
 
     print("Done!")
 

@@ -152,53 +152,201 @@ class PaperWriter:
         7.  **Consistency**: Ensure the number of analyzed studies stated in the text matches the provided data exactly.
         """
 
-        prompt = f"""
-        You are writing the section: "**{section_title}**" for our SLR on LLM Self-Improvement.
-        
-        **Global Context (What has been written so far)**:
-        {previous_sections_summary}
-        
-        **Goal**: 
-        - Ensure a smooth logical transition from the previous sections.
-        - Reference concepts established earlier in the Global Context to build a cohesive narrative.
-        - For Conclusions/Discussion, synthesize findings from ALL previous sections.
-        
-        **Instructions for this section**: {section_instructions}
+        if "Introduction" in section_title:
+             prompt = f"""
+            You are an elite scientific writer preparing the Introduction section for a 50-page 
+            Systematic Literature Review on "LLM Self-Improvement".
 
-        **SPECIAL INSTRUCTION FOR ABSTRACT**:
-        - **MAXIMUM LENGTH**: 200 words. STRICT LIMIT.
-        - **CONTENT**: Context -> Gap -> Solution -> Results (Key Metrics only) -> Implication.
-        - **BAN**: Do NOT include specific search strings, database names, or detailed method descriptions.
-        
-        **Source Material**:
-        {context_str}
-        
-        **Task**:
-        Write this section in full, academic, scientific prose. 
-        
-        {self.STYLE_GUIDELINES}
+            **CRITICAL RESEARCH QUESTION**:
+            "Welche methodischen Unterschiede bestehen zwischen den aktuellen Ansätzen und welche 
+            Verbesserungen können jeweils erzielt werden?"
 
-        **CRITICAL CONTEXT**:
-        - This is a **Systematic Literature Review (SLR)**.
-        - **Methodology Section**: MUST describe the Search Strategy, Screening Criteria, and Data Extraction. **DO NOT** describe a survey, participants, or experimental study.
-        - **Analysis Section**: Analyze the *included papers*.
-        
-        **Additional Requirements**:
-        - **Citation Style**: Strict APA format (Author, Year).
-        - **Citation Normalization**: Use official venue names, not ArXiv.
-        - **Evidence**: Every claim MUST be backed by a citation.
-        - **Detail**: Be extremely detailed. Expand on every point. Use examples.
-        - **Length**: Target ~2500-3000 words per section (we need a 50-page paper).
-        - **Figures**: If writing the 'Methodology' section, you MUST include:
-          `![Figure 1: Distribution of Included Studies by Year](images/figure_1_year_distribution.png)`
-          Refer to it in the text (e.g., "As shown in Figure 1...").
-        - **Figures**: If writing the 'Analysis' section (Section 3), you MUST include:
-          `![Figure 2: Distribution of Self-Improvement Mechanisms](images/figure_2_mechanism_distribution.png)`
-          Refer to it in the text.
-        - Be critical, analytical, and rigorous.
-        - **Connect back** to the previous section's findings to build a cumulative argument.
-        - Do NOT write the whole paper, JUST this section.
-        """
+            Your Introduction MUST:
+            1. Establish the CONTEXT: Why is LLM self-improvement important?
+            2. Identify the GAP: What do we NOT know about methodological differences?
+            3. State the RESEARCH QUESTION clearly
+            4. Preview the THREE MECHANISMS: SRP, RE, ISCD
+            5. Outline the PAPER STRUCTURE
+
+            ---
+
+            ### STRUCTURE (Inverted Pyramid):
+
+            **1.1 Context and Motivation** (2-3 pages)
+            - Start BROAD: The evolution of LLMs and their limitations
+            - Narrow DOWN: The need for self-improvement mechanisms
+            - Key Points:
+              * LLMs have fixed architectures and cannot learn from individual interactions
+              * Current approaches rely on expensive fine-tuning or RLHF
+              * Self-improvement offers a path to autonomous, adaptive systems
+              * This is critical for developing autonomous AI agents
+
+            - MUST include citations to establish the context
+            - MUST use hedging language appropriately ("research suggests", "evidence indicates")
+
+            **1.2 Core Mechanisms of LLM Self-Improvement** (3-4 pages)
+            Introduce the THREE mechanisms that are the focus of this review:
+
+            **1.2.1 Self-Referential Prompting (SRP)**
+            - Definition: Models generate or modify prompts based on their own outputs
+            - Key Characteristic: Operates at the PROMPT level
+            - Examples: Prompt optimization, self-generated instructions
+            - Advantage: Low computational cost, operates within a single forward pass
+            - Limitation: Limited to prompt-level optimization
+
+            **1.2.2 Reflective Evaluation (RE)**
+            - Definition: Models critique and evaluate their own responses
+            - Key Characteristic: Involves SELF-CRITIQUE and FEEDBACK
+            - Examples: Self-critique prompts, reflection-based refinement
+            - Advantage: Captures reasoning quality and correctness
+            - Limitation: Requires multiple forward passes
+
+            **1.2.3 Iterative Self-Correction / Debate (ISCD)**
+            - Definition: Multi-agent dialogue and iterative refinement
+            - Key Characteristic: Involves MULTIPLE AGENTS and DIALOGUE
+            - Examples: LLM debates, multi-agent consensus, iterative refinement
+            - Advantage: Leverages diverse perspectives and reasoning
+            - Limitation: High computational cost, requires careful judge selection
+
+            For EACH mechanism:
+            - Provide 2-3 concrete examples from the literature
+            - Explain the feedback loop explicitly
+            - Compare to standard approaches (e.g., CoT)
+
+            **1.3 Analytical Gaps in the Literature** (2-3 pages)
+            - What is NOT well understood about these mechanisms?
+            - CRITICAL: Focus on METHODOLOGICAL DIFFERENCES
+              * How do different implementations of SRP differ?
+              * What design choices lead to better performance?
+              * How do the three mechanisms compare methodologically?
+            - CRITICAL: Focus on IMPROVEMENTS
+              * Which mechanisms achieve the largest improvements?
+              * Under what conditions do improvements generalize?
+              * What are the efficiency-accuracy tradeoffs?
+            - Identify specific research gaps
+
+            **1.4 Research Questions and Contributions** (1-2 pages)
+            State your RQ clearly:
+            "Welche methodischen Unterschiede bestehen zwischen den aktuellen Ansätzen und welche 
+            Verbesserungen können jeweils erzielt werden?"
+
+            Break this into sub-questions:
+            - RQ1: What are the key methodological differences between SRP, RE, and ISCD?
+            - RQ2: How do design choices within each mechanism affect performance?
+            - RQ3: What improvements does each mechanism achieve over baselines?
+            - RQ4: How do improvements generalize across tasks and models?
+
+            State your contributions:
+            - Contribution 1: Systematic comparison of three mechanisms
+            - Contribution 2: Identification of methodological differences
+            - Contribution 3: Quantification of improvements
+            - Contribution 4: Guidance for practitioners
+
+            **1.5 Paper Outline** (0.5 pages)
+            Briefly outline the structure:
+            - Section 2: Methodology
+            - Section 3: Analysis of mechanisms
+            - Section 4: Discussion
+            - Section 5: Conclusion
+
+            ---
+
+            ### CRITICAL STYLE REQUIREMENTS:
+
+            **Language & Tone**:
+            - Formal, objective, academic register
+            - Third person ("This review examines..." NOT "We examine...")
+            - Past tense for findings, present tense for established facts
+            - NO colloquialisms, NO emotional language, NO vague intensifiers
+
+            **Sentence Structure**:
+            - Target 15-20 words per sentence
+            - Use active voice (80%+)
+            - Break up long sentences
+            - Use parallel structure for lists
+
+            **Citations**:
+            - EVERY claim must be backed by a citation
+            - Use APA format: (Author, Year)
+            - For 3+ authors: (Author et al., Year)
+            - Use "et al." with a period
+
+            **Hedging Language**:
+            - Strong claims: "The evidence demonstrates...", "Studies show..."
+            - Moderate claims: "The evidence suggests...", "Research indicates..."
+            - Weak claims: "The evidence may indicate...", "Some studies propose..."
+
+            **Formatting**:
+            - NO bold text in body
+            - Use *italics* sparingly for emphasis
+            - NO bullet points in body text
+            - Use full paragraphs
+
+            ---
+
+            ### CRITICAL CONTENT REQUIREMENTS:
+
+            - MUST answer "Why is this important?" for each mechanism
+            - MUST explain the feedback loop for each mechanism
+            - MUST cite at least 15-20 papers to establish context
+            - MUST be 8-10 pages long (approximately 3500-4000 words)
+            - MUST flow logically from broad context to specific research questions
+
+            **Source Material**:
+            {context_str}
+
+            **Task**:
+            Write the complete Introduction section in Markdown format.
+            Include proper heading (# Introduction) at the start.
+            """
+        else:
+            prompt = f"""
+            You are writing the section: "**{section_title}**" for our SLR on LLM Self-Improvement.
+            
+            **Global Context (What has been written so far)**:
+            {previous_sections_summary}
+            
+            **Goal**: 
+            - Ensure a smooth logical transition from the previous sections.
+            - Reference concepts established earlier in the Global Context to build a cohesive narrative.
+            - For Conclusions/Discussion, synthesize findings from ALL previous sections.
+            
+            **Instructions for this section**: {section_instructions}
+    
+            **SPECIAL INSTRUCTION FOR ABSTRACT**:
+            - **MAXIMUM LENGTH**: 200 words. STRICT LIMIT.
+            - **CONTENT**: Context -> Gap -> Solution -> Results (Key Metrics only) -> Implication.
+            - **BAN**: Do NOT include specific search strings, database names, or detailed method descriptions.
+            
+            **Source Material**:
+            {context_str}
+            
+            **Task**:
+            Write this section in full, academic, scientific prose. 
+            
+            {self.STYLE_GUIDELINES}
+    
+            **CRITICAL CONTEXT**:
+            - This is a **Systematic Literature Review (SLR)**.
+            - **Methodology Section**: MUST describe the Search Strategy, Screening Criteria, and Data Extraction. **DO NOT** describe a survey, participants, or experimental study.
+            - **Analysis Section**: Analyze the *included papers*.
+            
+            **Additional Requirements**:
+            - **Citation Style**: Strict APA format (Author, Year).
+            - **Citation Normalization**: Use official venue names, not ArXiv.
+            - **Evidence**: Every claim MUST be backed by a citation.
+            - **Detail**: Be extremely detailed. Expand on every point. Use examples.
+            - **Length**: Target ~2500-3000 words per section (we need a 50-page paper).
+            - **Figures**: If writing the 'Methodology' section, you MUST include:
+              `![Figure 1: Distribution of Included Studies by Year](images/figure_1_year_distribution.png)`
+              Refer to it in the text (e.g., "As shown in Figure 1...").
+            - **Figures**: If writing the 'Analysis' section (Section 3), you MUST include:
+              `![Figure 2: Distribution of Self-Improvement Mechanisms](images/figure_2_mechanism_distribution.png)`
+              Refer to it in the text.
+            - Be critical, analytical, and rigorous.
+            - **Connect back** to the previous section's findings to build a cumulative argument.
+            - Do NOT write the whole paper, JUST this section.
+            """
         
         response = self.model.generate_content(prompt)
         draft_text = response.text
