@@ -14,5 +14,6 @@ _archive/
 # Virtual Environment
 venv/
 env/
+slr_pipeline.log
 literature_autopilot/*.txt
 literature_autopilot/*_patch.md

@@ -178,9 +178,10 @@ This question has TWO components that BOTH must be addressed:
 """
 
 class PaperScreener:
-    def __init__(self, provider: str = "openai", model: str = "gpt-4o", prompt_path: str = None):
+    def __init__(self, provider: str = "openai", model: str = "gpt-4o", prompt_path: str = None, double_screening: bool = False):
         self.provider = provider
         self.model_name = model
+        self.double_screening = double_screening
         self.prompt = SCREENING_PROMPT_COT # Default fallback
         
         if prompt_path and os.path.exists(prompt_path):
@@ -241,11 +242,16 @@ class PaperScreener:
     def screen_papers(self, papers: list[Paper]) -> list[Dict]:
         """Screens a list of papers."""
         results = []
-        print(f"Screening {len(papers)} papers with {self.provider} ({self.model}) using Chain-of-Thought...")
+        method = "Double-Blind Consensus" if self.double_screening else "Single Pass"
+        print(f"Screening {len(papers)} papers with {self.provider} ({self.model}) using {method}...")
         
         for i, paper in enumerate(papers):
             print(f"[{i+1}/{len(papers)}] Screening: {paper.title[:50]}...")
-            result = self.screen_paper(paper)
+            
+            if self.double_screening:
+                result = self.screen_paper_consensus(paper)
+            else:
+                result = self.screen_paper(paper)
             
             # Merge result with paper info
             paper_data = paper.to_dict()

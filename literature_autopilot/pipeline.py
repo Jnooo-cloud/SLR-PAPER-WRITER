@@ -125,10 +125,13 @@ class SLRPipeline:
     def step_screen(self):
         logging.info("\n--- Phase 3: Screening ---")
         prompt_path = self.config.get("prompts", {}).get("screening")
+        double_screening = self.config.get("screening", {}).get("double_screening", False)
+        
         screener = PaperScreener(
             provider=self.config["screening"]["provider"], 
             model=self.config["screening"]["model"],
-            prompt_path=prompt_path
+            prompt_path=prompt_path,
+            double_screening=double_screening
         )
         # Load existing if available
         if os.path.exists("slr_results_enriched.csv") and not self.unique_papers:
@@ -143,7 +146,18 @@ class SLRPipeline:
         
         # Filter included
         self.final_papers = [p for p in filtered_papers if any(r["title"] == p.title and r["Screening Decision"] == "INCLUDE" for r in screened_results)]
-        logging.info(f"Included {len(self.final_papers)} papers.")
+        
+        # Calculate Stats
+        total_screened = len(filtered_papers)
+        total_included = len(self.final_papers)
+        if total_included > 0:
+            ratio = total_screened / total_included
+            ratio_str = f"1:{ratio:.1f}"
+        else:
+            ratio_str = "N/A (0 included)"
+            
+        logging.info(f"Screening Complete. Included: {total_included}/{total_screened}")
+        logging.info(f"Screening-to-Inclusion Ratio: {ratio_str}")
 
     def step_download_pdfs(self):
         logging.info("\n--- Phase 4: PDF Retrieval ---")
