@@ -65,6 +65,19 @@ The logic for screening and extraction is defined in the prompt files in `litera
 python3 literature_autopilot/slr_bot.py --screen --download-pdfs --extract-data --write-paper --final-review
 ```
 
+### Advanced Usage
+- **Resume Pipeline**: If the process fails, resume from a specific step:
+  ```bash
+  python3 literature_autopilot/slr_bot.py --resume-from extract
+  ```
+- **Logging**: Detailed logs are saved to `slr_pipeline.log`.
+
+## Testing
+Run the automated test suite:
+```bash
+python3 -m unittest discover tests
+```
+
 ## Project Structure
 - `literature_autopilot/`
   - `config.yaml`: Main configuration.
@@ -72,3 +85,4 @@ python3 literature_autopilot/slr_bot.py --screen --download-pdfs --extract-data 
   - `pipeline.py`: Main orchestration logic.
   - `slr_bot.py`: CLI entry point.
   - `...`: Other modules (search, screen, extract, etc.).
+- `tests/`: Unit and integration tests.

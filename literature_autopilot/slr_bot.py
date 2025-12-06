@@ -23,7 +23,8 @@ def main():
     # Skip Flags (for debugging/resuming)
     parser.add_argument("--skip-search", action="store_true", help="Skip search and snowballing phase")
     parser.add_argument("--skip-analysis", action="store_true", help="Skip analysis phase (Visuals, Gaps, GRADE)")
-    
+    parser.add_argument("--resume-from", type=str, choices=["search", "screen", "download", "extract", "analyze", "write", "review"], help="Resume pipeline from a specific step")
+
     args = parser.parse_args()
     
     # Initialize and Run Pipeline

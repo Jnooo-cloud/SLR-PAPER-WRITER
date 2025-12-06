@@ -4,6 +4,7 @@ import json
 import yaml
 import time
 import pandas as pd
+import logging
 from typing import Dict, Any
 
 # Import existing modules
@@ -23,6 +24,20 @@ from literature_autopilot.context_manager import ContextManager
 
 class SLRPipeline:
     def __init__(self, config_path: str = "literature_autopilot/config.yaml"):
+        # Configure Logging
+        logging.basicConfig(
+            filename='slr_pipeline.log', 
+            level=logging.INFO, 
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            filemode='a'
+        )
+        # Also log to console
+        console = logging.StreamHandler()
+        console.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        console.setFormatter(formatter)
+        logging.getLogger('').addHandler(console)
+        
         self.config = self._load_config(config_path)
         self.visualizer = SLRVisualizer() if self.config["analysis"]["run_visualizer"] else None
         
@@ -46,41 +61,48 @@ class SLRPipeline:
 
     def run(self, args):
         """Orchestrate the full pipeline."""
-        print(f"Starting SLR Pipeline for topic: {self.config['slr_topic']}")
+        logging.info(f"Starting SLR Pipeline for topic: {self.config['slr_topic']}")
+        
+        steps = ["search", "screen", "download", "extract", "analyze", "write", "review"]
+        start_index = 0
+        if args.resume_from:
+            if args.resume_from in steps:
+                start_index = steps.index(args.resume_from)
+                logging.info(f"Resuming pipeline from step: {args.resume_from}")
         
         # 1. Search & Snowballing
-        if not args.skip_search:
+        if start_index <= 0 and not args.skip_search:
             self.step_search_and_snowball()
         
         # 2. Screening
-        if args.screen:
+        if start_index <= 1 and args.screen:
             self.step_screen()
             
         # 3. PDF Retrieval
-        if args.download_pdfs:
+        if start_index <= 2 and args.download_pdfs:
             self.step_download_pdfs()
             
         # 4. Extraction
-        if args.extract_data:
+        if start_index <= 3 and args.extract_data:
             self.step_extract_data()
             
         # 5. Analysis (Visuals, Gaps, GRADE)
-        if not args.skip_analysis:
+        if start_index <= 4 and not args.skip_analysis:
             self.step_analyze()
             
         # 6. Writing
-        if args.write_paper:
+        if start_index <= 5 and args.write_paper:
             self.step_write_paper()
             
         # 7. Final Review
-        if args.final_review:
+        if start_index <= 6 and args.final_review:
             self.step_final_review()
 
     def step_search_and_snowball(self):
-        print("\n--- Phase 1 & 2: Search & Snowballing ---")
+        logging.info("\n--- Phase 1 & 2: Search & Snowballing ---")
         keywords = self.config["search"]["keywords"]
         for keyword in keywords:
-            print(f"Searching for: '{keyword}'")
+            logging.info(f"Searching for: '{keyword}'")
             s2_results = self.s2_search.search_keyword(keyword, limit=self.config["search"]["max_search_results"])
             arxiv_results = self.arxiv_search.search_keyword(keyword, limit=self.config["search"]["max_search_results"])
             self.all_papers.extend(s2_results + arxiv_results)
@@ -88,7 +110,7 @@ class SLRPipeline:
         # Snowballing
         if self.config["snowballing"]["enabled"]:
             seed_titles = self.config["search"]["seed_titles"]
-            print(f"Snowballing with {len(seed_titles)} seeds...")
+            logging.info(f"Snowballing with {len(seed_titles)} seeds...")
             # (Simplified logic from original bot)
             for title in seed_titles:
                 results = self.s2_search.search_keyword(title, limit=1)
@@ -97,11 +119,11 @@ class SLRPipeline:
                     self.all_papers.extend(citations)
 
         self.unique_papers = deduplicate_papers(self.all_papers)
-        print(f"Total unique papers found: {len(self.unique_papers)}")
+        logging.info(f"Total unique papers found: {len(self.unique_papers)}")
         export_to_csv(self.unique_papers, "slr_results_enriched.csv")
 
     def step_screen(self):
-        print("\n--- Phase 3: Screening ---")
+        logging.info("\n--- Phase 3: Screening ---")
         prompt_path = self.config.get("prompts", {}).get("screening")
         screener = PaperScreener(
             provider=self.config["screening"]["provider"], 
@@ -121,10 +143,10 @@ class SLRPipeline:
         
         # Filter included
         self.final_papers = [p for p in filtered_papers if any(r["title"] == p.title and r["Screening Decision"] == "INCLUDE" for r in screened_results)]
-        print(f"Included {len(self.final_papers)} papers.")
+        logging.info(f"Included {len(self.final_papers)} papers.")
 
     def step_download_pdfs(self):
-        print("\n--- Phase 4: PDF Retrieval ---")
+        logging.info("\n--- Phase 4: PDF Retrieval ---")
         retriever = PDFRetriever()
         # Load final papers if needed
         if not self.final_papers and os.path.exists("slr_screening_results.csv"):
@@ -137,7 +159,7 @@ class SLRPipeline:
                 paper.pdf_path = pdf_path
 
     def step_extract_data(self):
-        print("\n--- Phase 5: Extraction ---")
+        logging.info("\n--- Phase 5: Extraction ---")
         prescreen_path = self.config.get("prompts", {}).get("prescreening")
         extract_path = self.config.get("prompts", {}).get("extraction")
         
@@ -158,7 +180,7 @@ class SLRPipeline:
             json.dump(self.extracted_data, f, indent=2)
 
     def step_analyze(self):
-        print("\n--- Phase 6: Analysis ---")
+        logging.info("\n--- Phase 6: Analysis ---")
         if not self.extracted_data and os.path.exists("slr_extracted_data.json"):
             with open("slr_extracted_data.json", "r") as f:
                 self.extracted_data = json.load(f)
@@ -208,7 +230,7 @@ class SLRPipeline:
             self.grade_summary = GRADEAssessment.generate_grade_summary(grade_assessments)
 
     def step_write_paper(self):
-        print("\n--- Phase 7: Writing ---")
+        logging.info("\n--- Phase 7: Writing ---")
         writer = PaperWriter(model_name=self.config["writing"]["model"])
         
         # Generate Structure
@@ -224,7 +246,7 @@ class SLRPipeline:
         previous_summary = ""
         
         for section in sections:
-            print(f"  Writing {section}...")
+            logging.info(f"  Writing {section}...")
             instructions = f"Follow the plan for '{section}' defined in the Structure below.\nStructure:\n{self.paper_structure}"
             
             # Inject Gap Report into Discussion
@@ -244,7 +266,7 @@ class SLRPipeline:
             f.write(self.draft_paper)
 
     def step_final_review(self):
-        print("\n--- Phase 8: Final Review ---")
+        logging.info("\n--- Phase 8: Final Review ---")
         mcp_reviewer = MCPFinalReviewer(model_name=self.config["writing"]["model"])
         
         with open("final_paper.md", "r") as f:
@@ -255,7 +277,7 @@ class SLRPipeline:
             validator = CitationValidator(self.extracted_data)
             report = validator.generate_validation_report(paper_text)
             if "Invalid/Unknown Citations" in report:
-                print("Triggering Auto-Correction for Citations...")
+                logging.info("Triggering Auto-Correction for Citations...")
                 correction_prompt = f"Fix these invalid citations:\n{report}"
                 paper_text = mcp_reviewer.targeted_patch(paper_text, correction_prompt)
         

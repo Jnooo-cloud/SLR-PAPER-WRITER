@@ -7,3 +7,5 @@ semanticscholar
 pdfminer.six
 PyPDF2
 python-dotenv
+pyyaml
+matplotlib
