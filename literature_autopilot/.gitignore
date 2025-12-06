@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+pdfs/
+slr_extracted_data.json
+slr_results_enriched.csv
+slr_screening_results.csv

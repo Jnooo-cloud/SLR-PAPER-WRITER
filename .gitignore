@@ -1,0 +1,16 @@
+# System files
+.DS_Store
+.env
+__pycache__/
+*.pyc
+
+# Data and Results
+data/
+output/
+images/
+pdfs/
+_archive/
+
+# Virtual Environment
+venv/
+env/

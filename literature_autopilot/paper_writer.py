@@ -1,0 +1,237 @@
+import os
+import json
+import google.generativeai as genai
+import requests
+from typing import List, Dict
+from reviewer import MultiAgentReviewer
+from llm_utils import RotatableModel
+
+class PaperWriter:
+    STYLE_GUIDELINES = """
+    **ACADEMIC WRITING BEST PRACTICES (STRICT ENFORCEMENT):**
+    
+    1.  **Structure & Hierarchy**:
+        *   Follow the **Inverted Pyramid**: Introduction (Broad) -> Methods (Specific) -> Results (Data) -> Discussion (Interpretation) -> Conclusion (Broad).
+        *   **Max 3 levels of nesting** (e.g., 1.2.1 is max). Do NOT use 1.1.1.1.
+        *   **Paragraph Structure (Rule of Three)**:
+            *   Sentence 1: **Topic Sentence** (State main idea).
+            *   Sentences 2-4: **Supporting Evidence** (Data, citations, details).
+            *   Sentence 5: **Concluding Sentence** (Summarize/Transition).
+    
+    2.  **Language & Tone**:
+        *   **Register**: Formal, objective, academic.
+        *   **Prohibited**: Colloquialisms ("stuff", "basically"), vague intensifiers ("very", "really"), emotional language ("unfortunately").
+        *   **Perspective**: Use Third Person ("The study found...") or "We" only for methodology ("We conducted..."). Avoid "I".
+        *   **Tense**: Use **PAST TENSE** for results/methodology ("We analyzed...", "The study found..."). Use Present Tense for established facts ("LLMs are...").
+    
+    3.  **Formatting & Style**:
+        *   **No Bullet Points** in Introduction, Discussion, or Conclusion. Use full paragraphs.
+        *   **No Bold Text** for emphasis. Use *italics* sparingly.
+        *   **Figures**: Captions must be below figures (e.g., "Figure 1: ...").
+        *   **Placeholders**: **NEVER** use placeholders like "N studies" or "[Insert number]". You MUST use the actual data provided (e.g., "30 studies").
+    
+    4.  **Content Specifics**:
+        *   **Exclusion Criteria**: Explicitly distinguish "autonomous" vs "human-in-the-loop" (e.g., RLHF is excluded because it requires human feedback).
+        *   **Novelty**: Define novelty clearly (e.g., "new feedback signal", "new domain").
+    """
+
+    def __init__(self, model_name: str = "gemini-1.5-pro-latest"):
+        self.model = RotatableModel(model_name)
+        self.reviewer = MultiAgentReviewer(model_name)
+        self.s2_api_key = None # Optional: Add S2 API key if available
+
+    def _get_official_venue(self, title: str) -> str:
+        """
+        Attempts to find the official publication venue (e.g. 'NeurIPS 2024') 
+        using Semantic Scholar, to replace 'ArXiv' citations.
+        """
+        try:
+            url = "https://api.semanticscholar.org/graph/v1/paper/search"
+            params = {"query": title, "limit": 1, "fields": "venue,year,publicationVenue"}
+            headers = {"x-api-key": self.s2_api_key} if self.s2_api_key else {}
+            
+            response = requests.get(url, params=params, headers=headers, timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("data"):
+                    paper = data["data"][0]
+                    # Prefer full venue name
+                    venue = paper.get("publicationVenue", {}).get("name")
+                    if not venue:
+                        venue = paper.get("venue")
+                    
+                    if venue and venue.lower() != "arxiv":
+                        return f"{venue} {paper.get('year', '')}"
+        except Exception:
+            pass
+        return "ArXiv" # Fallback
+
+    def generate_structure(self, extracted_data: List[Dict]) -> str:
+        """
+        Generates a detailed outline for the 50-page paper based on extracted data.
+        """
+        print("Generating paper structure...")
+        
+        # Summarize the extracted data to fit in context if needed, 
+        # but Gemini 1.5 Pro has huge context so we might pass a lot.
+        # Let's create a consolidated summary string.
+        data_summary = json.dumps(extracted_data[:20], indent=2) # Limit to 20 to save tokens, but usually enough for structure
+        
+        prompt = f"""
+        You are an elite scientific writer and senior editor (100+ published papers). 
+        We are writing a comprehensive Systematic Literature Review (SLR) on "LLM Self-Improvement".
+        
+        Here is a sample of the data extracted from the included studies:
+        {data_summary}
+        
+        Please design a detailed, academic structure (Outline) for this paper.
+        The structure must be suitable for a high-impact publication (A+ level).
+        
+        {self.STYLE_GUIDELINES}
+
+        Requirements:
+        1.  **Length**: The content must be sufficient for ~50 pages.
+        2.  **Structure (Strictly following Critique Guidelines)**:
+            *   **Abstract** (Max 200 words, concise, no citations, NO placeholders)
+            *   **1. Introduction**
+                *   1.1 Context and Motivation
+                *   1.2 Core Mechanisms of LLM Self-Improvement
+                    *   1.2.1 Self-Referential Prompting
+                    *   1.2.2 Reflective Evaluation
+                    *   1.2.3 Iterative Self-Correction / Debate
+                *   1.3 Analytical Gaps in the Literature
+                *   1.4 Research Questions and Contributions (Use paragraph format, no bullet points)
+                *   1.5 Paper Outline
+            *   **2. Methodology**
+                *   Protocol Description (Search, Screening, Quality Assessment)
+                *   **Explicitly state N={len(extracted_data)} studies** (Do not use "N").
+            *   **3. Analysis of Core Mechanisms** (Structured Comparison)
+                *   3.1 Self-Referential Prompting (Methodological details & Improvements)
+                *   3.2 Reflective Evaluation (Methodological details & Improvements)
+                *   3.3 Iterative Self-Correction / Debate (Methodological details & Improvements)
+            *   **4. Discussion**
+                *   Synthesis of Methodological Differences
+                *   Synthesis of Achieved Improvements
+                *   Implications for Autonomous Agents
+            *   **5. Conclusion**
+            *   **Bibliography** (APA)
+        3.  **Detail**: For each section, provide a brief bullet point of what papers/data will be discussed.
+        
+        Output the structure in Markdown format.
+        """
+        
+        response = self.model.generate_content(prompt)
+        return response.text
+
+    def write_section(self, section_title: str, section_instructions: str, relevant_data: List[Dict], previous_sections_summary: str = "", skip_review: bool = False) -> str:
+        """
+        Writes a single section of the paper.
+        """
+        print(f"Writing section: {section_title}...")
+        
+        # Enrich data with official venue info for citations
+        for paper_data in relevant_data:
+            if paper_data.get("Source") == "arXiv" or "arxiv" in str(paper_data.get("Source", "")).lower():
+                official_venue = self._get_official_venue(paper_data.get("Title", ""))
+                if official_venue != "ArXiv":
+                    paper_data["OfficialVenue"] = official_venue
+                    print(f"  [Citation Normalizer] Found official venue for '{paper_data.get('Title')[:20]}...': {official_venue}")
+
+        context_str = json.dumps(relevant_data, indent=2)
+        
+        # --- STYLE GUIDELINES ---
+        STYLE_GUIDELINES = """
+        **CRITICAL STYLE RULES (ZERO TOLERANCE FOR ROBOTIC PROSE):**
+        1.  **BANNED WORDS**: Do NOT use the following words/phrases. They are hallmarks of AI writing and will cause immediate rejection:
+        1.  **Academic Tone**: Use formal, objective, and precise language. Avoid "AI-sounding" fluff (e.g., "delve", "tapestry", "paramount", "crucial").
+        2.  **No Bullet Points**: Do NOT use bullet points in the body text (Introduction, Analysis, Discussion). Use full paragraphs.
+        3.  **No Bold Emphasis**: Do NOT use **bold** for emphasis. Use *italics* if absolutely necessary, but sparingly.
+        4.  **Figure Labels**: Always use "Figure X" (e.g., "Figure 1"), NEVER "Abb. X".
+        5.  **Sentence Length**: Keep sentences concise (max 25 words). Break up long sentences.
+        6.  **Citation Format**: Use APA style (Author, Year). For >2 authors, use "et al." (with a dot). NEVER use "etajl", "ets al", or "et al" without a dot.
+        7.  **Consistency**: Ensure the number of analyzed studies stated in the text matches the provided data exactly.
+        """
+
+        prompt = f"""
+        You are writing the section: "**{section_title}**" for our SLR on LLM Self-Improvement.
+        
+        **Global Context (What has been written so far)**:
+        {previous_sections_summary}
+        
+        **Goal**: 
+        - Ensure a smooth logical transition from the previous sections.
+        - Reference concepts established earlier in the Global Context to build a cohesive narrative.
+        - For Conclusions/Discussion, synthesize findings from ALL previous sections.
+        
+        **Instructions for this section**: {section_instructions}
+
+        **SPECIAL INSTRUCTION FOR ABSTRACT**:
+        - **MAXIMUM LENGTH**: 200 words. STRICT LIMIT.
+        - **CONTENT**: Context -> Gap -> Solution -> Results (Key Metrics only) -> Implication.
+        - **BAN**: Do NOT include specific search strings, database names, or detailed method descriptions.
+        
+        **Source Material**:
+        {context_str}
+        
+        **Task**:
+        Write this section in full, academic, scientific prose. 
+        
+        {self.STYLE_GUIDELINES}
+
+        **CRITICAL CONTEXT**:
+        - This is a **Systematic Literature Review (SLR)**.
+        - **Methodology Section**: MUST describe the Search Strategy, Screening Criteria, and Data Extraction. **DO NOT** describe a survey, participants, or experimental study.
+        - **Analysis Section**: Analyze the *included papers*.
+        
+        **Additional Requirements**:
+        - **Citation Style**: Strict APA format (Author, Year).
+        - **Citation Normalization**: Use official venue names, not ArXiv.
+        - **Evidence**: Every claim MUST be backed by a citation.
+        - **Detail**: Be extremely detailed. Expand on every point. Use examples.
+        - **Length**: Target ~2500-3000 words per section (we need a 50-page paper).
+        - **Figures**: If writing the 'Methodology' section, you MUST include:
+          `![Figure 1: Distribution of Included Studies by Year](images/figure_1_year_distribution.png)`
+          Refer to it in the text (e.g., "As shown in Figure 1...").
+        - **Figures**: If writing the 'Analysis' section (Section 3), you MUST include:
+          `![Figure 2: Distribution of Self-Improvement Mechanisms](images/figure_2_mechanism_distribution.png)`
+          Refer to it in the text.
+        - Be critical, analytical, and rigorous.
+        - **Connect back** to the previous section's findings to build a cumulative argument.
+        - Do NOT write the whole paper, JUST this section.
+        """
+        
+        response = self.model.generate_content(prompt)
+        draft_text = response.text
+        
+        # --- Multi-Agent Review Loop ---
+        if not skip_review:
+            print(f"  [Multi-Agent Reviewer] Critiquing and improving '{section_title}'...")
+            final_text = self.reviewer.review_section(section_title, draft_text, source_data=relevant_data)
+        else:
+            print(f"  [Multi-Agent Reviewer] Skipping review for '{section_title}' (Draft Only)...")
+            final_text = draft_text
+        
+        # --- POST-PROCESSING ENFORCEMENT ---
+        # Forcefully remove em-dashes if the LLM ignored the prompt
+        if "—" in final_text or "--" in final_text:
+            print(f"  [Style Enforcer] Removing em-dashes from '{section_title}'...")
+            final_text = final_text.replace("—", ", ").replace(" -- ", ", ").replace("--", ", ")
+            # Fix any double commas created by replacement
+            final_text = final_text.replace(", ,", ",").replace(" ,", ",")
+            
+        # Ensure Section Header Exists
+        # If the text doesn't start with a header matching the section title, prepend it.
+        # We check for # Title or ## Title
+        if not final_text.strip().startswith("#"):
+            print(f"  [Structure Enforcer] Prepending missing header for '{section_title}'...")
+            # Determine level. Abstract/Intro/Methodology/Discussion/Conclusion are usually H1 or H2 depending on structure.
+            # For simplicity, we'll use H1 for main sections if they are top level keys in the structure.
+            # But since we don't know the level here easily, we can default to H1 or H2 based on title.
+            # Actually, the prompt asks for "Structure (Strictly following SLR Reporting Protocol)".
+            # Let's assume H1 for standard sections.
+            if section_title.lower() in ["abstract", "introduction", "methodology", "discussion", "conclusion"]:
+                final_text = f"# {section_title}\n\n{final_text}"
+            else:
+                final_text = f"## {section_title}\n\n{final_text}"
+        
+        return final_text

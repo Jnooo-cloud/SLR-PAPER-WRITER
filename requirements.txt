@@ -1,0 +1,9 @@
+google-generativeai
+openai
+pandas
+requests
+arxiv
+semanticscholar
+pdfminer.six
+PyPDF2
+python-dotenv
