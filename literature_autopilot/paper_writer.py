@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import google.generativeai as genai
@@ -70,7 +71,7 @@ class PaperWriter:
         """
         Generates a detailed outline for the 50-page paper based on extracted data.
         """
-        print("Generating paper structure...")
+        logging.info("Generating paper structure...")
         
         # Summarize the extracted data to fit in context if needed, 
         # but Gemini 1.5 Pro has huge context so we might pass a lot.
@@ -127,7 +128,7 @@ class PaperWriter:
         """
         Writes a single section of the paper.
         """
-        print(f"Writing section: {section_title}...")
+        logging.info(f"Writing section: {section_title}...")
         
         # Enrich data with official venue info for citations
         for paper_data in relevant_data:
@@ -135,7 +136,7 @@ class PaperWriter:
                 official_venue = self._get_official_venue(paper_data.get("Title", ""))
                 if official_venue != "ArXiv":
                     paper_data["OfficialVenue"] = official_venue
-                    print(f"  [Citation Normalizer] Found official venue for '{paper_data.get('Title')[:20]}...': {official_venue}")
+                    logging.info(f"  [Citation Normalizer] Found official venue for '{paper_data.get('Title')[:20]}...': {official_venue}")
 
         context_str = json.dumps(relevant_data, indent=2)
         
@@ -336,7 +337,13 @@ class PaperWriter:
             - **Citation Normalization**: Use official venue names, not ArXiv.
             - **Evidence**: Every claim MUST be backed by a citation.
             - **Detail**: Be extremely detailed. Expand on every point. Use examples.
-            - **Length**: Target ~2500-3000 words per section (we need a 50-page paper).
+            - **Detail & Substance**: To achieve the required length without "fluff", you must:
+              *   **Synthesize** findings from multiple papers (don't just list them).
+              *   **Contrast** conflicting results or methodologies.
+              *   **Deep Dive** into technical specifics (architectures, prompt templates, error modes).
+              *   **Use Examples**: Describe specific experiments or case studies from the data in detail.
+            - **Length Goal**: Aim for **comprehensive depth** (~800-1000 words). If you run out of things to say, **do not repeat yourself**. Instead, analyze the *implications* or *limitations* more deeply.
+            - **Anti-Fluff**: Do not use vague generalizations. Every paragraph must contain specific information derived from the extracted data.
             - **Figures**: If writing the 'Methodology' section, you MUST include:
               `![Figure 1: Distribution of Included Studies by Year](images/figure_1_year_distribution.png)`
               Refer to it in the text (e.g., "As shown in Figure 1...").
@@ -353,33 +360,117 @@ class PaperWriter:
         
         # --- Multi-Agent Review Loop ---
         if not skip_review:
-            print(f"  [Multi-Agent Reviewer] Critiquing and improving '{section_title}'...")
+            logging.info(f"  [Multi-Agent Reviewer] Critiquing and improving '{section_title}'...")
             final_text = self.reviewer.review_section(section_title, draft_text, source_data=relevant_data)
         else:
-            print(f"  [Multi-Agent Reviewer] Skipping review for '{section_title}' (Draft Only)...")
+            logging.info(f"  [Multi-Agent Reviewer] Skipping review for '{section_title}' (Draft Only)...")
             final_text = draft_text
         
         # --- POST-PROCESSING ENFORCEMENT ---
         # Forcefully remove em-dashes if the LLM ignored the prompt
         if "—" in final_text or "--" in final_text:
-            print(f"  [Style Enforcer] Removing em-dashes from '{section_title}'...")
+            logging.info(f"  [Style Enforcer] Removing em-dashes from '{section_title}'...")
             final_text = final_text.replace("—", ", ").replace(" -- ", ", ").replace("--", ", ")
             # Fix any double commas created by replacement
             final_text = final_text.replace(", ,", ",").replace(" ,", ",")
             
         # Ensure Section Header Exists
-        # If the text doesn't start with a header matching the section title, prepend it.
-        # We check for # Title or ## Title
         if not final_text.strip().startswith("#"):
-            print(f"  [Structure Enforcer] Prepending missing header for '{section_title}'...")
-            # Determine level. Abstract/Intro/Methodology/Discussion/Conclusion are usually H1 or H2 depending on structure.
-            # For simplicity, we'll use H1 for main sections if they are top level keys in the structure.
-            # But since we don't know the level here easily, we can default to H1 or H2 based on title.
-            # Actually, the prompt asks for "Structure (Strictly following SLR Reporting Protocol)".
-            # Let's assume H1 for standard sections.
+            logging.info(f"  [Structure Enforcer] Prepending missing header for '{section_title}'...")
             if section_title.lower() in ["abstract", "introduction", "methodology", "discussion", "conclusion"]:
                 final_text = f"# {section_title}\n\n{final_text}"
             else:
                 final_text = f"## {section_title}\n\n{final_text}"
         
+        # Validation
+        length_status = self.validate_section_length(section_title, final_text)
+        if "WARNING" in length_status:
+            logging.warning(f"  [Length Check] {length_status}")
+            # Optional: Trigger expansion loop if critically short
+            
         return final_text
+
+    DETAILED_STRUCTURE = {
+        "Abstract": {
+            "target_words": 200,
+            "sections": ["Background", "Methods", "Results", "Conclusion"]
+        },
+        "1. Introduction": {
+            "target_pages": 3,
+            "subsections": [
+                "1.1 Context and Motivation",
+                "1.2 Core Mechanisms",
+                "1.2.1 Self-Referential Prompting",
+                "1.2.2 Reflective Evaluation",
+                "1.2.3 Iterative Self-Correction/Debate",
+                "1.3 Research Gaps",
+                "1.4 Research Questions",
+                "1.5 Paper Outline"
+            ]
+        },
+        "2. Methodology": {
+            "target_pages": 5,
+            "subsections": [
+                "2.1 Protocol Registration",
+                "2.2 Search Strategy",
+                "2.3 Inclusion/Exclusion Criteria",
+                "2.4 Study Selection Process",
+                "2.5 Data Extraction",
+                "2.6 Quality Assessment (AMSTAR 2)",
+                "2.7 Synthesis Methods"
+            ]
+        },
+        "3. Analysis": {
+            "target_pages": 25,
+            "subsections": [
+                "3.1 Self-Referential Prompting",
+                "3.1.1 Methodological Overview",
+                "3.1.2 Comparative Analysis",
+                "3.1.3 Quantitative Results",
+                "3.1.4 Quality Assessment",
+                "3.2 Reflective Evaluation",
+                "3.3 Iterative Self-Correction/Debate"
+            ]
+        },
+        "4. Discussion": {
+            "target_pages": 10,
+            "subsections": [
+                "4.1 Synthesis of Findings",
+                "4.2 Methodological Differences",
+                "4.3 Improvement Patterns",
+                "4.4 Implications",
+                "4.5 Limitations",
+                "4.6 Future Research Directions"
+            ]
+        },
+        "5. Conclusion": {
+            "target_pages": 2,
+            "subsections": ["Key Findings", "Recommendations"]
+        }
+    }
+    
+    def validate_section_length(self, section_title, text):
+        """Checks if section meets target length."""
+        # Find matching key in DETAILED_STRUCTURE (fuzzy match or exact)
+        target = {}
+        for key, val in self.DETAILED_STRUCTURE.items():
+            if key in section_title or section_title in key:
+                target = val
+                break
+        
+        if not target:
+            return "OK (No target defined)"
+
+        target_words = target.get("target_words")
+        target_pages = target.get("target_pages")
+        
+        word_count = len(text.split())
+        page_estimate = word_count / 250  # ~250 words per page
+        
+        if target_pages and page_estimate < target_pages * 0.8:
+            return f"WARNING: Section '{section_title}' too short ({page_estimate:.1f} vs {target_pages} pages)"
+        
+        if target_words and word_count < target_words * 0.8:
+             return f"WARNING: Section '{section_title}' too short ({word_count} vs {target_words} words)"
+             
+        return "OK"

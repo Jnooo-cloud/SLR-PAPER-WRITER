@@ -79,3 +79,52 @@ class GRADEAssessment:
             summary += f"| {outcome} | **{grade}** | {reasons} |\n"
             
         return summary
+
+    @classmethod
+    def assess_certainty_comprehensive(cls, studies_data: list) -> Dict[str, Any]:
+        """
+        Comprehensive GRADE assessment based on a list of studies.
+        """
+        rob = cls.assess_risk_of_bias(studies_data)
+        inconsistency = cls.assess_inconsistency(studies_data)
+        indirectness = cls.assess_indirectness(studies_data)
+        imprecision = cls.assess_imprecision(studies_data)
+        
+        # Map to assess_certainty args
+        # Risk of Bias HIGH -> Low Quality
+        quality_map = {"HIGH": "LOW", "LOW": "HIGH", "UNKNOWN": "MEDIUM"}
+        
+        return cls.assess_certainty(
+            study_quality=quality_map.get(rob, "MEDIUM"),
+            consistency="INCONSISTENT" if inconsistency == "HIGH" else "CONSISTENT",
+            directness="INDIRECT" if indirectness == "HIGH" else "DIRECT",
+            precision="IMPRECISE" if imprecision == "HIGH" else "PRECISE"
+        )
+
+    @staticmethod
+    def assess_risk_of_bias(studies_data):
+        low_quality_count = 0
+        for s in studies_data:
+            score = s.get("amstar_2_assessment", {}).get("overall_score", "UNKNOWN")
+            if score in ["LOW", "CRITICALLY LOW"]:
+                low_quality_count += 1
+        
+        if not studies_data: return "UNKNOWN"
+        if low_quality_count / len(studies_data) > 0.5:
+            return "HIGH"
+        return "LOW"
+
+    @staticmethod
+    def assess_inconsistency(studies_data):
+        # Placeholder: Check for conflicting results if available
+        return "LOW"
+
+    @staticmethod
+    def assess_indirectness(studies_data):
+        # Placeholder
+        return "LOW"
+
+    @staticmethod
+    def assess_imprecision(studies_data):
+        # Placeholder
+        return "LOW"

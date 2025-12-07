@@ -2,6 +2,7 @@ import os
 import time
 import requests
 import arxiv
+import logging
 from literature_autopilot.search_modules import Paper
 
 class PDFRetriever:
@@ -22,7 +23,7 @@ class PDFRetriever:
         if os.path.exists(file_path):
             return file_path
             
-        print(f"Attempting to download PDF for: {paper.title}...")
+        logging.info(f"Attempting to download PDF for: {paper.title}...")
         
         # Strategy 1: ArXiv (Check Source, URL, OR DOI)
         is_arxiv = (
@@ -48,7 +49,7 @@ class PDFRetriever:
         
         # Strategy 4: Last Resort - Try searching ArXiv by title for ANY paper
         # (Many S2 papers are actually on ArXiv but missing the link/DOI in S2 metadata)
-        print(f"  Fallback: Searching ArXiv by title...")
+        logging.info(f"  Fallback: Searching ArXiv by title...")
         if self._download_from_arxiv(paper, file_path):
             return file_path
             
@@ -68,10 +69,10 @@ class PDFRetriever:
                 best_oa = data.get("best_oa_location", {})
                 if best_oa and best_oa.get("url_for_pdf"):
                     pdf_url = best_oa.get("url_for_pdf")
-                    print(f"  Found Unpaywall PDF: {pdf_url}")
+                    logging.info(f"  Found Unpaywall PDF: {pdf_url}")
                     return self._download_from_url(pdf_url, save_path)
         except Exception as e:
-            print(f"  Unpaywall check failed: {e}")
+            logging.warning(f"  Unpaywall check failed: {e}")
         return False
 
     def _download_from_arxiv(self, paper: Paper, save_path: str) -> bool:
@@ -115,17 +116,17 @@ class PDFRetriever:
                         if paper_title_norm == res_title_norm or \
                            (len(paper_title_norm) > 20 and paper_title_norm in res_title_norm):
                             arxiv_id = res.entry_id.split("/")[-1].split("v")[0]
-                            print(f"  [ArXiv Search] Match found: {res.title} (ID: {arxiv_id})")
+                            logging.info(f"  [ArXiv Search] Match found: {res.title} (ID: {arxiv_id})")
                             break
             
             if arxiv_id:
-                print(f"  Found ArXiv ID: {arxiv_id}")
+                logging.info(f"  Found ArXiv ID: {arxiv_id}")
                 paper_obj = next(arxiv.Client().results(arxiv.Search(id_list=[arxiv_id])))
                 paper_obj.download_pdf(filename=os.path.basename(save_path), dirpath=os.path.dirname(save_path))
-                print(f"  Success (ArXiv): {save_path}")
+                logging.info(f"  Success (ArXiv): {save_path}")
                 return True
         except Exception as e:
-            print(f"  ArXiv download failed: {e}")
+            logging.error(f"  ArXiv download failed: {e}")
         return False
 
     def _download_from_url(self, url: str, save_path: str) -> bool:
@@ -135,8 +136,8 @@ class PDFRetriever:
                 with open(save_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
-                print(f"  Success (Direct URL): {save_path}")
+                logging.info(f"  Success (Direct URL): {save_path}")
                 return True
         except Exception as e:
-            print(f"  Direct URL download failed: {e}")
+            logging.error(f"  Direct URL download failed: {e}")
         return False

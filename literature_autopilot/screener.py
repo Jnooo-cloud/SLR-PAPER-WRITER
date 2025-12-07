@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import time
@@ -6,7 +7,179 @@ import google.generativeai as genai
 from literature_autopilot.search_modules import Paper
 from literature_autopilot.llm_utils import RotatableModel
 
-# Chain-of-Thought Prompt for higher accuracy
+# ... (SCREENING_EXAMPLES and SCREENING_PROMPT_COT are fine below line 48)
+
+class PaperScreener:
+    def __init__(self, provider: str = "openai", model: str = "gpt-4o", prompt_path: str = None, double_screening: bool = False):
+        self.provider = provider
+        self.model_name = model
+        self.double_screening = double_screening
+        self.prompt = SCREENING_PROMPT_COT # Default fallback
+        
+        if prompt_path and os.path.exists(prompt_path):
+            with open(prompt_path, "r") as f:
+                self.prompt = f.read()
+        
+        if self.provider == "openai":
+            from openai import OpenAI
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            self.model = RotatableModel(self.model_name)
+            
+        elif self.provider == "gemini":
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                logging.warning("Warning: GEMINI_API_KEY not found in environment variables.")
+            genai.configure(api_key=api_key)
+            self.client = genai.GenerativeModel(self.model_name or "gemini-pro-latest")
+            self.model = RotatableModel(self.model_name)
+            
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+
+    def screen_paper(self, paper: Paper) -> Dict:
+        """Screens a single paper using the LLM with CoT and Retries."""
+        # Use self.prompt (loaded from file or fallback)
+        # Append paper details manually to avoid .format() issues with JSON braces
+        prompt = f"""
+        {self.prompt}
+        
+        ---
+        
+        **PAPER TO ANALYZE**:
+        Title: {paper.title}
+        Abstract: {paper.abstract}
+        """
+        
+        max_retries = 3
+        retry_delay = 5
+        
+        for attempt in range(max_retries):
+            try:
+                if self.provider == "openai":
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": "You are a rigorous research assistant."},
+                            {"role": "user", "content": prompt}
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.0
+                    )
+                    content = response.choices[0].message.content
+                    return json.loads(content)
+    
+                elif self.provider == "gemini":
+                    response = self.client.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+                    return json.loads(response.text)
+                    
+            except Exception as e:
+                logging.warning(f"  Error screening paper '{paper.title[:30]}...' (Attempt {attempt+1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1)) # Exponential-ish backoff
+                else:
+                    return {"decision": "ERROR", "confidence": 0.0, "reason": str(e), "analysis": "Error occurred after retries"}
+        
+        return {"decision": "ERROR", "confidence": 0.0, "reason": "Max retries exceeded", "analysis": "Error"}
+
+    def screen_papers(self, papers: list[Paper]) -> list[Dict]:
+        """Screens a list of papers."""
+        results = []
+        method = "Double-Blind Consensus" if self.double_screening else "Single Pass"
+        logging.info(f"Screening {len(papers)} papers with {self.provider} ({self.model}) using {method}...")
+        
+        for i, paper in enumerate(papers):
+            logging.info(f"[{i+1}/{len(papers)}] Screening: {paper.title[:50]}...")
+            
+            if self.double_screening:
+                result = self.screen_paper_consensus(paper)
+            else:
+                result = self.screen_paper(paper)
+            
+            # Merge result with paper info
+            paper_data = paper.to_dict()
+            paper_data.update({
+                "Screening Decision": result.get("decision", "ERROR"),
+                "Screening Confidence": result.get("confidence", 0.0),
+                "Screening Reason": result.get("reason", "Error occurred"),
+                "Screening Analysis": result.get("analysis", "")
+            })
+            results.append(paper_data)
+            
+            # Rate limiting (simple sleep)
+            time.sleep(4) 
+            
+        return results
+
+    def screen_paper_consensus(self, paper: Paper) -> Dict:
+        """
+        Screens a paper using a 'Double-Blind' consensus approach.
+        Runs two independent screening passes. If they disagree, a third 'Senior Editor' pass resolves it.
+        """
+        # Pass 1: Reviewer A
+        result_a = self.screen_paper(paper)
+        decision_a = result_a.get("decision", "EXCLUDE")
+        reasoning_a = result_a.get("reasoning", "No reasoning provided.")
+
+        # Pass 2: Reviewer B
+        # (We rely on the non-deterministic nature of the LLM for independence, 
+        # or we could slightly vary the system prompt if needed. For now, same prompt is fine.)
+        result_b = self.screen_paper(paper)
+        decision_b = result_b.get("decision", "EXCLUDE")
+        reasoning_b = result_b.get("reasoning", "No reasoning provided.")
+
+        # Consensus Check
+        if decision_a == decision_b:
+            # Agreement reached
+            return result_a
+        else:
+            # Conflict! Trigger Senior Editor
+            logging.info(f"    [Conflict] Reviewer A: {decision_a} vs Reviewer B: {decision_b}. Resolving...")
+            return self._resolve_conflict(paper, result_a, result_b)
+
+    def _resolve_conflict(self, paper: Paper, result_a: Dict, result_b: Dict) -> Dict:
+        """
+        Resolves a screening conflict using a 'Senior Editor' persona.
+        """
+        prompt = f"""
+        You are the "Senior Editor" for a Systematic Literature Review.
+        Two junior reviewers have disagreed on whether to include this paper.
+        Your job is to make the FINAL, BINDING decision.
+
+        **Paper**: "{paper.title}"
+        **Abstract**: "{paper.abstract}"
+
+        **Reviewer A's Opinion**:
+        Decision: {result_a.get('decision')}
+        Reasoning: {result_a.get('reasoning')}
+
+        **Reviewer B's Opinion**:
+        Decision: {result_b.get('decision')}
+        Reasoning: {result_b.get('reasoning')}
+
+        **Task**:
+        1.  Analyze the paper against the strict inclusion criteria (Self-Improvement Loop + Empirical Data).
+        2.  Evaluate the reviewers' arguments. Who is correct?
+        3.  Decide "INCLUDE" or "EXCLUDE".
+
+        **Output Format (JSON ONLY)**:
+        {{
+          "decision": "INCLUDE" or "EXCLUDE",
+          "reasoning": "Final binding decision rationale..."
+        }}
+        """
+        
+        try:
+            response = self.model.generate_content(prompt)
+            text = response.text.strip()
+            # Clean markdown
+            if text.startswith("```json"):
+                text = text[7:-3]
+            
+            return json.loads(text)
+        except Exception as e:
+            logging.error(f"    [Senior Editor Error] {e}")
+            # Default to EXCLUDE on error to be safe
+            return {"decision": "EXCLUDE", "reasoning": "Senior Editor failed to resolve conflict."}
 SCREENING_EXAMPLES = """
 ### EXAMPLES OF INCLUSION vs. EXCLUSION:
 
@@ -206,7 +379,17 @@ class PaperScreener:
 
     def screen_paper(self, paper: Paper) -> Dict:
         """Screens a single paper using the LLM with CoT and Retries."""
-        prompt = SCREENING_PROMPT_COT.format(title=paper.title, abstract=paper.abstract)
+        # Use self.prompt (loaded from file or fallback)
+        # Append paper details manually to avoid .format() issues with JSON braces
+        prompt = f"""
+        {self.prompt}
+        
+        ---
+        
+        **PAPER TO ANALYZE**:
+        Title: {paper.title}
+        Abstract: {paper.abstract}
+        """
         
         max_retries = 3
         retry_delay = 5
@@ -245,11 +428,16 @@ class PaperScreener:
         method = "Double-Blind Consensus" if self.double_screening else "Single Pass"
         print(f"Screening {len(papers)} papers with {self.provider} ({self.model}) using {method}...")
         
+        decisions_a = []
+        decisions_b = []
+        
         for i, paper in enumerate(papers):
             print(f"[{i+1}/{len(papers)}] Screening: {paper.title[:50]}...")
             
             if self.double_screening:
-                result = self.screen_paper_consensus(paper)
+                result, res_a, res_b = self.screen_paper_consensus(paper)
+                decisions_a.append(res_a)
+                decisions_b.append(res_b)
             else:
                 result = self.screen_paper(paper)
             
@@ -266,32 +454,34 @@ class PaperScreener:
             # Rate limiting (simple sleep)
             time.sleep(4) 
             
+        if self.double_screening and decisions_a:
+            kappa = self.calculate_inter_rater_reliability(decisions_a, decisions_b)
+            print(f"\n[Screening Quality] Inter-Rater Reliability (Cohen's Kappa): {kappa:.2f}")
+            
         return results
-    def screen_paper_consensus(self, paper: Paper) -> Dict:
+
+    def screen_paper_consensus(self, paper: Paper) -> tuple[Dict, Dict, Dict]:
         """
         Screens a paper using a 'Double-Blind' consensus approach.
-        Runs two independent screening passes. If they disagree, a third 'Senior Editor' pass resolves it.
+        Returns (final_result, result_a, result_b).
         """
         # Pass 1: Reviewer A
         result_a = self.screen_paper(paper)
         decision_a = result_a.get("decision", "EXCLUDE")
-        reasoning_a = result_a.get("reasoning", "No reasoning provided.")
 
         # Pass 2: Reviewer B
-        # (We rely on the non-deterministic nature of the LLM for independence, 
-        # or we could slightly vary the system prompt if needed. For now, same prompt is fine.)
         result_b = self.screen_paper(paper)
         decision_b = result_b.get("decision", "EXCLUDE")
-        reasoning_b = result_b.get("reasoning", "No reasoning provided.")
 
         # Consensus Check
         if decision_a == decision_b:
             # Agreement reached
-            return result_a
+            return result_a, result_a, result_b
         else:
             # Conflict! Trigger Senior Editor
             print(f"    [Conflict] Reviewer A: {decision_a} vs Reviewer B: {decision_b}. Resolving...")
-            return self._resolve_conflict(paper, result_a, result_b)
+            final_res = self._resolve_conflict(paper, result_a, result_b)
+            return final_res, result_a, result_b
 
     def _resolve_conflict(self, paper: Paper, result_a: Dict, result_b: Dict) -> Dict:
         """
@@ -337,3 +527,40 @@ class PaperScreener:
             print(f"    [Senior Editor Error] {e}")
             # Default to EXCLUDE on error to be safe
             return {"decision": "EXCLUDE", "reasoning": "Senior Editor failed to resolve conflict."}
+
+    def calculate_inter_rater_reliability(self, results_a: list[Dict], results_b: list[Dict]) -> float:
+        """Cohen's Kappa for consistency between reviewers (Manual implementation)."""
+        if not results_a or not results_b or len(results_a) != len(results_b):
+            return 0.0
+            
+        decisions_a = [r.get("decision") for r in results_a]
+        decisions_b = [r.get("decision") for r in results_b]
+        
+        n = len(decisions_a)
+        if n == 0: return 0.0
+        
+        # Count agreements
+        agree = sum(1 for a, b in zip(decisions_a, decisions_b) if a == b)
+        p_o = agree / n
+        
+        # Count frequencies
+        count_a_include = decisions_a.count("INCLUDE")
+        count_a_exclude = decisions_a.count("EXCLUDE")
+        count_b_include = decisions_b.count("INCLUDE")
+        count_b_exclude = decisions_b.count("EXCLUDE")
+        
+        # Expected agreement by chance
+        p_yes = (count_a_include / n) * (count_b_include / n)
+        p_no = (count_a_exclude / n) * (count_b_exclude / n)
+        p_e = p_yes + p_no
+        
+        if p_e == 1: return 1.0 
+        
+        kappa = (p_o - p_e) / (1 - p_e)
+        return kappa
+
+    def borderline_review(self, papers: list[Dict], confidence_threshold: float = 0.7) -> list[Dict]:
+        """Identifies borderline papers for manual review."""
+        borderline = [p for p in papers 
+                     if 0.4 < p.get("Screening Confidence", 0.0) < confidence_threshold]
+        return borderline

@@ -4,6 +4,10 @@ import argparse
 # Add parent directory to path to allow importing literature_autopilot as a package
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from dotenv import load_dotenv
+# Load environment variables BEFORE importing other modules
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "literature_autopilot", ".env"))
+
 from literature_autopilot.pipeline import SLRPipeline
 
 def main():

@@ -1,55 +1,68 @@
+import json
 import pandas as pd
-import datetime
 
-def generate_apa_citation(row):
+def generate_apa_citation(data):
     # Authors
-    authors = row.get('Authors', 'Unknown')
-    if pd.isna(authors):
-        authors = "Unknown"
+    authors = data.get('Authors', [])
+    if isinstance(authors, list):
+        if len(authors) > 2:
+            author_str = f"{authors[0]} et al."
+        else:
+            author_str = " & ".join(authors)
+    else:
+        author_str = str(authors)
+    
+    if not author_str or author_str == "nan":
+        author_str = "Unknown"
     
     # Year
-    year = row.get('Year', 'n.d.')
-    if pd.isna(year):
+    year = data.get('Year', 'n.d.')
+    if not year or str(year) == "nan":
         year = "n.d."
     
     # Title
-    title = row.get('Title', 'Untitled')
+    title = data.get('Title', 'Untitled')
     
     # Venue/Journal
-    venue = row.get('Venue', '')
-    if pd.isna(venue) or venue == '':
+    venue = data.get('Source', '')
+    if not venue or venue == '':
         venue = "arXiv preprint"
     
     # DOI/URL
-    url = row.get('URL', '')
-    doi = row.get('DOI', '')
+    url = data.get('URL', '')
+    doi = data.get('DOI', '')
     
-    citation = f"{authors} ({year}). {title}. *{venue}*."
-    if doi:
+    citation = f"{author_str} ({year}). {title}. *{venue}*."
+    if doi and str(doi) != "nan":
         citation += f" https://doi.org/{doi}"
-    elif url:
+    elif url and str(url) != "nan":
         citation += f" {url}"
     
     return citation
 
-def main():
+def generate_bibliography_string(json_path="slr_extracted_data.json"):
     try:
-        df = pd.read_csv("slr_results_final.csv")
+        with open(json_path, 'r') as f:
+            data = json.load(f)
     except FileNotFoundError:
-        print("Error: slr_results_final.csv not found.")
-        return
+        return "Error: slr_extracted_data.json not found."
 
-    print("\n# Bibliography\n")
+    bibliography = "\n# Bibliography\n\n"
     
     citations = []
-    for _, row in df.iterrows():
-        citations.append(generate_apa_citation(row))
+    for entry in data:
+        citations.append(generate_apa_citation(entry))
     
     # Sort alphabetically
     citations.sort()
     
     for citation in citations:
-        print(f"* {citation}")
+        bibliography += f"* {citation}\n"
+        
+    return bibliography
+
+def main():
+    print(generate_bibliography_string())
 
 if __name__ == "__main__":
     main()

@@ -134,3 +134,48 @@ class ArxivSearch:
             doi=result.doi,
             source="arXiv"
         )
+
+class EnhancedSearchStrategy:
+    SOURCES = [
+        "semantic_scholar",
+        "arxiv",
+        # "pubmed",      # Placeholder for future implementation
+        # "ieee_xplore", # Placeholder
+        # "acm_digital_library", # Placeholder
+        # "google_scholar" # Placeholder
+    ]
+    
+    def __init__(self, s2_api_key: str = None):
+        self.s2_search = SemanticScholarSearch(api_key=s2_api_key)
+        self.arxiv_search = ArxivSearch()
+
+    def search_source(self, source: str, keyword: str, limit: int = 10) -> List[Paper]:
+        if source == "semantic_scholar":
+            return self.s2_search.search_keyword(keyword, limit)
+        elif source == "arxiv":
+            return self.arxiv_search.search_keyword(keyword, limit)
+        else:
+            return []
+
+    def adaptive_search(self, keyword: str, min_results: int = 100) -> List[Paper]:
+        """
+        Adaptive search that queries multiple sources until min_results is reached.
+        """
+        results = []
+        print(f"  [Adaptive Search] Target: {min_results} papers for '{keyword}'")
+        
+        for source in self.SOURCES:
+            if len(results) >= min_results:
+                break
+            
+            # Calculate remaining needed
+            remaining = min_results - len(results)
+            # Fetch a bit more to be safe and ensure diversity
+            fetch_limit = max(20, remaining) 
+            
+            print(f"    Querying {source} (limit={fetch_limit})...")
+            source_results = self.search_source(source, keyword, limit=fetch_limit)
+            results.extend(source_results)
+            print(f"    Found {len(source_results)} papers from {source}.")
+            
+        return results[:min_results]

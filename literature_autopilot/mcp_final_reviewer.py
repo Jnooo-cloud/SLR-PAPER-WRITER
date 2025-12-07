@@ -144,6 +144,47 @@ class MCPFinalReviewer:
         
         return "FULL_REWRITE"  # Too many issues, rewrite
 
+            return response.text.strip()
+        except Exception as e:
+            print(f"Error during rewriting: {e}")
+            return paper
+
+    def _targeted_patch(self, paper: str, review: Dict) -> str:
+        """Patch only specific sections instead of rewriting entire paper."""
+        
+        weaknesses = review.get("weaknesses", [])
+        critical_issues = [w for w in weaknesses if w.get("severity") == "CRITICAL"]
+        
+        current_paper = paper
+        
+        # For each critical issue, identify the section and patch it
+        for issue in critical_issues[:3]:  # Max 3 patches per iteration
+            area = issue.get("area")
+            suggestion = issue.get("suggestion")
+            print(f"    Patching area: {area}...")
+            
+            patch_prompt = f"""
+            You are an expert editor. The paper has an issue in the '{area}' section:
+            
+            **Issue**: {issue.get('issue')}
+            **Suggestion**: {suggestion}
+            
+            **Original Paper**:
+            {current_paper}
+            
+            **Your Task**: 
+            Find the relevant section in the paper and apply the fix.
+            Output ONLY the corrected paper.
+            """
+            
+            try:
+                response = self.model.generate_content(patch_prompt)
+                current_paper = response.text.strip()
+            except Exception as e:
+                print(f"    Patch failed: {e}")
+        
+        return current_paper
+
     def iterative_improvement_loop(self, paper_text: str, initial_focus_areas: list = None) -> Tuple[str, Dict]:
         """
         Iteratively improves the paper until A+ quality is achieved.
@@ -159,11 +200,22 @@ class MCPFinalReviewer:
             print(f"ITERATION {iteration}/{self.max_iterations}")
             print(f"{'='*60}")
             
+            # PRISMA Check
+            prisma_result = self.prisma_compliance_check(current_paper)
+            missing_items = prisma_result.get("missing_items", [])
+            if missing_items:
+                print(f"  [PRISMA] Missing items: {missing_items}")
+            
+            # Update focus areas with PRISMA gaps
+            current_focus = list(initial_focus_areas) if initial_focus_areas else []
+            if missing_items:
+                current_focus.append(f"PRISMA Compliance (Missing: {', '.join(missing_items[:3])})")
+
             # Get review from Manus
             print("Sending paper to Manus for review...")
             review = self.review_paper_via_mcp(
                 current_paper,
-                focus_areas=initial_focus_areas if iteration == 1 else None
+                focus_areas=current_focus if iteration == 1 or missing_items else None
             )
             
             quality_score = review.get("overall_quality_score", 0)
@@ -171,7 +223,7 @@ class MCPFinalReviewer:
             print(f"Quality Score: {quality_score}/100")
             
             # Check convergence
-            if quality_score >= self.quality_threshold:
+            if quality_score >= self.quality_threshold and not missing_items:
                 print(f"\n✅ A+ QUALITY ACHIEVED! (Score: {quality_score}/100)")
                 return current_paper, review
             
@@ -179,7 +231,6 @@ class MCPFinalReviewer:
             convergence = self.analyze_convergence()
             if convergence.get("is_stuck"):
                 print(f"⚠️ STUCK: Improvement rate is low. Trying different strategy...")
-                # Could try different approach here, but for now we proceed
             
             # Determine patching strategy
             strategy = self.targeted_patch_strategy(review)
@@ -242,42 +293,6 @@ class MCPFinalReviewer:
             print(f"Error during rewriting: {e}")
             return paper
 
-    def _targeted_patch(self, paper: str, review: Dict) -> str:
-        """Patch only specific sections instead of rewriting entire paper."""
-        
-        weaknesses = review.get("weaknesses", [])
-        critical_issues = [w for w in weaknesses if w.get("severity") == "CRITICAL"]
-        
-        current_paper = paper
-        
-        # For each critical issue, identify the section and patch it
-        for issue in critical_issues[:3]:  # Max 3 patches per iteration
-            area = issue.get("area")
-            suggestion = issue.get("suggestion")
-            print(f"    Patching area: {area}...")
-            
-            patch_prompt = f"""
-            You are an expert editor. The paper has an issue in the '{area}' section:
-            
-            **Issue**: {issue.get('issue')}
-            **Suggestion**: {suggestion}
-            
-            **Original Paper**:
-            {current_paper}
-            
-            **Your Task**: 
-            Find the relevant section in the paper and apply the fix.
-            Output ONLY the corrected paper.
-            """
-            
-            try:
-                response = self.model.generate_content(patch_prompt)
-                current_paper = response.text.strip()
-            except Exception as e:
-                print(f"    Patch failed: {e}")
-        
-        return current_paper
-
     def _polish_paper(self, paper: str, review: Dict) -> str:
         """Polish the paper for final submission (minor edits)."""
         polish_prompt = f"""
@@ -298,3 +313,86 @@ class MCPFinalReviewer:
         except Exception as e:
             print(f"    Polish failed: {e}")
             return paper
+
+    PRISMA_2020_CHECKLIST = {
+        "Title": {"item": 1, "required": True},
+        "Abstract": {"item": 2, "required": True},
+        "Rationale": {"item": 3, "required": True},
+        "Objectives": {"item": 4, "required": True},
+        "Eligibility Criteria": {"item": 5, "required": True},
+        "Information Sources": {"item": 6, "required": True},
+        "Search Strategy": {"item": 7, "required": True},
+        "Study Selection Process": {"item": 8, "required": True},
+        "Data Extraction": {"item": 9, "required": True},
+        "Risk of Bias": {"item": 10, "required": True},
+        "Effect Measures": {"item": 11, "required": True},
+        "Synthesis Methods": {"item": 12, "required": True},
+        "Reporting Bias": {"item": 13, "required": False},
+        "Certainty Assessment": {"item": 14, "required": True},
+        "Results": {"item": 15, "required": True},
+        "Discussion": {"item": 16, "required": True},
+        "Limitations": {"item": 17, "required": True},
+        "Conclusions": {"item": 18, "required": True},
+        "Registration": {"item": 19, "required": True},
+        "Protocol": {"item": 20, "required": False},
+        "Funding": {"item": 21, "required": True},
+        "Conflicts of Interest": {"item": 22, "required": True},
+        "Data Availability": {"item": 23, "required": False},
+        "Code Availability": {"item": 24, "required": False},
+        "Supplementary Materials": {"item": 25, "required": False},
+        "Search Appendix": {"item": 26, "required": True},
+        "Characteristics Table": {"item": 27, "required": True}
+    }
+
+    def prisma_compliance_check(self, paper_text: str) -> Dict:
+        """Vollständige PRISMA 2020 Überprüfung (Single Pass)."""
+        print("  [Compliance] Running PRISMA 2020 Check...")
+        prompt = f"""
+        You are a Compliance Officer. Check the attached paper against the PRISMA 2020 Checklist.
+        
+        ITEMS:
+        {json.dumps(self.PRISMA_2020_CHECKLIST, indent=2)}
+        
+        For each item, determine if it is PRESENT in the paper.
+        
+        Output Format (JSON ONLY):
+        {{
+            "checklist": {{
+                "Title": {{"present": true, "location": "Header"}},
+                ...
+            }},
+            "missing_items": ["List of missing required items"]
+        }}
+        """
+        try:
+            # We pass the paper text. If it's too long, we might need to truncate or use a model with large context.
+            # Gemini 1.5 Pro is fine.
+            response = self.model.generate_content(prompt + "\n\nPAPER:\n" + paper_text)
+            text = response.text.strip()
+            if text.startswith("```json"):
+                text = text[7:-3]
+            return json.loads(text)
+        except Exception as e:
+            print(f"    PRISMA Check failed: {e}")
+            return {"missing_items": [], "error": str(e)}
+
+    def analyze_convergence(self) -> Dict:
+        """Intelligente Konvergenz-Analyse (Updated)."""
+        if len(self.quality_history) < 2:
+            return {"status": "insufficient_data", "is_stuck": False}
+        
+        scores = self.quality_history
+        improvements = []
+        for i in range(1, len(scores)):
+            improvements.append(scores[i] - scores[i-1])
+            
+        # Check if improving
+        recent_improvement = sum(improvements[-2:]) if len(improvements) >= 2 else improvements[-1]
+        is_stuck = recent_improvement < 2
+        
+        return {
+            "status": "stuck" if is_stuck else "improving",
+            "improvement_rate": recent_improvement,
+            "is_stuck": is_stuck,
+            "scores": scores
+        }

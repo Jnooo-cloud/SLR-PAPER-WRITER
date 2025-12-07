@@ -117,3 +117,32 @@ class Snowballer:
             doi=doi,
             source="Semantic Scholar (Snowball)"
         )
+
+    def bidirectional_snowballing(self, paper_id: str, depth: int = 1, max_results_per_step: int = 20) -> List[Paper]:
+        """
+        Performs bidirectional snowballing (forward citations + backward references) up to a specified depth.
+        """
+        all_papers = []
+        current_layer_ids = [paper_id]
+        
+        for d in range(depth):
+            print(f"  [Snowballing] Depth {d+1}/{depth} for {paper_id}...")
+            next_layer_ids = []
+            
+            for pid in current_layer_ids:
+                # Forward (Citations)
+                citations = self.get_citations(pid, max_results=max_results_per_step)
+                all_papers.extend(citations)
+                next_layer_ids.extend([p.doi for p in citations if p.doi]) # Use DOI for next step
+                
+                # Backward (References)
+                references = self.get_references(pid, max_results=max_results_per_step)
+                all_papers.extend(references)
+                next_layer_ids.extend([p.doi for p in references if p.doi])
+            
+            # Prepare for next layer
+            current_layer_ids = list(set(next_layer_ids)) # Deduplicate
+            if not current_layer_ids:
+                break
+                
+        return self._deduplicate_papers(all_papers)

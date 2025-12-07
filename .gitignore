@@ -17,3 +17,11 @@ env/
 slr_pipeline.log
 literature_autopilot/*.txt
 literature_autopilot/*_patch.md
+
+# Generated Artifacts
+final_paper.md
+final_paper.docx
+final_paper_A_plus.md
+slr_extracted_data.json
+slr_screening_results.csv
+*.log

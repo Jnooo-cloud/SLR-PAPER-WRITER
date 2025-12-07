@@ -1,3 +1,4 @@
+import socket
 import argparse
 import os
 import json
@@ -7,8 +8,12 @@ import pandas as pd
 import logging
 from typing import Dict, Any
 
+# Set global timeout for all network requests (including arxiv library)
+socket.setdefaulttimeout(60)
+
 # Import existing modules
-from literature_autopilot.search_modules import SemanticScholarSearch, ArxivSearch
+# Import existing modules
+from literature_autopilot.search_modules import EnhancedSearchStrategy
 from literature_autopilot.snowballing import Snowballer
 from literature_autopilot.utils import deduplicate_papers, filter_papers, export_to_csv, export_to_markdown, load_papers_from_csv
 from literature_autopilot.screener import PaperScreener
@@ -42,8 +47,7 @@ class SLRPipeline:
         self.visualizer = SLRVisualizer() if self.config["analysis"]["run_visualizer"] else None
         
         # Initialize modules
-        self.s2_search = SemanticScholarSearch()
-        self.arxiv_search = ArxivSearch()
+        self.search_strategy = EnhancedSearchStrategy()
         self.snowballer = Snowballer()
         
         # State
@@ -101,21 +105,36 @@ class SLRPipeline:
     def step_search_and_snowball(self):
         logging.info("\n--- Phase 1 & 2: Search & Snowballing ---")
         keywords = self.config["search"]["keywords"]
+        
+        # Adaptive Search
         for keyword in keywords:
             logging.info(f"Searching for: '{keyword}'")
-            s2_results = self.s2_search.search_keyword(keyword, limit=self.config["search"]["max_search_results"])
-            arxiv_results = self.arxiv_search.search_keyword(keyword, limit=self.config["search"]["max_search_results"])
-            self.all_papers.extend(s2_results + arxiv_results)
+            results = self.search_strategy.adaptive_search(
+                keyword, 
+                min_results=self.config["search"]["max_search_results"]
+            )
+            self.all_papers.extend(results)
             
         # Snowballing
         if self.config["snowballing"]["enabled"]:
             seed_titles = self.config["search"]["seed_titles"]
             logging.info(f"Snowballing with {len(seed_titles)} seeds...")
-            # (Simplified logic from original bot)
+            
+            # Find seed papers first
+            seed_papers = []
             for title in seed_titles:
-                results = self.s2_search.search_keyword(title, limit=1)
+                results = self.search_strategy.search_source("semantic_scholar", title, limit=1)
                 if results and results[0].doi:
-                    citations = self.snowballer.get_citations(results[0].doi, max_results=self.config["snowballing"]["max_results"])
+                    seed_papers.append(results[0])
+            
+            # Bidirectional Snowballing
+            for paper in seed_papers:
+                if paper.doi:
+                    citations = self.snowballer.bidirectional_snowballing(
+                        paper.doi, 
+                        depth=self.config["snowballing"].get("depth", 1),
+                        max_results_per_step=self.config["snowballing"]["max_results"]
+                    )
                     self.all_papers.extend(citations)
 
         self.unique_papers = deduplicate_papers(self.all_papers)
@@ -140,12 +159,17 @@ class SLRPipeline:
         # Filter recent papers first
         filtered_papers = filter_papers(self.unique_papers, min_year=2021)
         
-        screened_results = screener.screen_papers(filtered_papers) # Using bulk method for simplicity, or loop
-        # Save results
-        pd.DataFrame(screened_results).to_csv("slr_screening_results.csv", index=False)
+        if os.path.exists("slr_screening_results.csv"):
+            logging.info("Found existing screening results. Loading...")
+            df = pd.read_csv("slr_screening_results.csv")
+            screened_results = df.to_dict('records')
+        else:
+            screened_results = screener.screen_papers(filtered_papers) 
+            # Save results
+            pd.DataFrame(screened_results).to_csv("slr_screening_results.csv", index=False)
         
         # Filter included
-        self.final_papers = [p for p in filtered_papers if any(r["title"] == p.title and r["Screening Decision"] == "INCLUDE" for r in screened_results)]
+        self.final_papers = [p for p in filtered_papers if any(r["Title"] == p.title and r["Screening Decision"] == "INCLUDE" for r in screened_results)]
         
         # Calculate Stats
         total_screened = len(filtered_papers)
@@ -164,8 +188,25 @@ class SLRPipeline:
         retriever = PDFRetriever()
         # Load final papers if needed
         if not self.final_papers and os.path.exists("slr_screening_results.csv"):
-             # Load logic...
-             pass 
+             logging.info("Loading included papers from slr_screening_results.csv...")
+             df = pd.read_csv("slr_screening_results.csv")
+             # Filter for included papers
+             included_df = df[df["Screening Decision"] == "INCLUDE"]
+             
+             # Reconstruct Paper objects
+             from literature_autopilot.search_modules import Paper
+             for _, row in included_df.iterrows():
+                 paper = Paper(
+                     title=row.get("Title", "Unknown"),
+                     authors=str(row.get("Authors", "")).split(", "),
+                     year=row.get("Year"),
+                     abstract=row.get("Abstract", ""),
+                     url=row.get("URL") if pd.notna(row.get("URL")) else None,
+                     doi=row.get("DOI") if pd.notna(row.get("DOI")) else None,
+                     source=row.get("Source", "Unknown")
+                 )
+                 self.final_papers.append(paper)
+             logging.info(f"Loaded {len(self.final_papers)} included papers.") 
              
         for paper in self.final_papers:
             pdf_path = retriever.download_paper(paper)
@@ -187,6 +228,10 @@ class SLRPipeline:
             if hasattr(paper, 'pdf_path') and paper.pdf_path:
                 data = extractor.process_paper(paper.pdf_path)
                 if data:
+                    if "error" in data:
+                        logging.error(f"Skipping paper '{paper.title}' due to extraction error: {data['error']}")
+                        continue
+                        
                     data["paper_title"] = paper.title
                     self.extracted_data.append(data)
         
@@ -198,6 +243,10 @@ class SLRPipeline:
         if not self.extracted_data and os.path.exists("slr_extracted_data.json"):
             with open("slr_extracted_data.json", "r") as f:
                 self.extracted_data = json.load(f)
+
+        if not self.extracted_data:
+            logging.error("No extracted data available for analysis. Aborting pipeline.")
+            return
 
         # Visualizations
         if self.config["analysis"]["run_visualizer"] and self.visualizer:
@@ -223,38 +272,21 @@ class SLRPipeline:
 
         # GRADE (Data-Driven)
         if self.config["analysis"]["run_grade_assessment"]:
-            all_outcomes = []
-            for paper in self.extracted_data:
-                comparisons = paper.get("improvements", {}).get("baseline_comparisons", [])
-                quality = paper.get("quality_assessment", {}).get("overall_score", "LOW")
-                for comp in comparisons:
-                    all_outcomes.append({
-                        "outcome": f"{comp.get('task')} - {comp.get('metric')}",
-                        "quality": quality
-                    })
-            
-            # Simplified aggregation: Group by outcome name and take average quality?
-            # For now, just list them or take top 5
-            grade_assessments = []
-            for out in all_outcomes[:5]: # Limit to top 5 for summary
-                assessment = GRADEAssessment.assess_certainty(study_quality=out["quality"])
-                assessment["outcome"] = out["outcome"]
-                grade_assessments.append(assessment)
-                
-            self.grade_summary = GRADEAssessment.generate_grade_summary(grade_assessments)
+            # Use Comprehensive Assessment
+            self.grade_summary = GRADEAssessment.generate_grade_summary([
+                GRADEAssessment.assess_certainty_comprehensive(self.extracted_data)
+            ])
 
     def step_write_paper(self):
         logging.info("\n--- Phase 7: Writing ---")
         writer = PaperWriter(model_name=self.config["writing"]["model"])
         
-        # Generate Structure
+        # Generate Structure (Optional, can rely on DETAILED_STRUCTURE)
         self.paper_structure = writer.generate_structure(self.extracted_data)
         
         # Write Sections with Deep Integration
-        sections = self.config.get("paper_structure", {}).get("sections", [
-            "Abstract", "1. Introduction", "2. Methodology", 
-            "3. Results", "4. Discussion", "5. Conclusion"
-        ])
+        # Use keys from DETAILED_STRUCTURE to ensure we cover everything
+        sections = list(writer.DETAILED_STRUCTURE.keys())
         
         full_paper = ""
         previous_summary = ""
@@ -293,10 +325,17 @@ class SLRPipeline:
             if "Invalid/Unknown Citations" in report:
                 logging.info("Triggering Auto-Correction for Citations...")
                 correction_prompt = f"Fix these invalid citations:\n{report}"
-                paper_text = mcp_reviewer.targeted_patch(paper_text, correction_prompt)
+                paper_text = mcp_reviewer._targeted_patch(paper_text, {"weaknesses": [{"severity": "CRITICAL", "area": "Citations", "issue": "Invalid citations found", "suggestion": correction_prompt}]})
         
         # Iterative Review
         improved_paper, review = mcp_reviewer.iterative_improvement_loop(paper_text, initial_focus_areas=self.config["review"]["focus_areas"])
         
+        # Append Bibliography
+        from generate_bibliography import generate_bibliography_string
+        bibliography = generate_bibliography_string("slr_extracted_data.json")
+        improved_paper += "\n\n" + bibliography
+        
         with open("final_paper_A_plus.md", "w") as f:
             f.write(improved_paper)
+            
+        logging.info("Final paper with bibliography saved to 'final_paper_A_plus.md'.")
